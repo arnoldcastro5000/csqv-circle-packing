@@ -1,0 +1,17 @@
+# C++ build artifacts
+cpp/build/
+build/
+*.o
+*.exe
+*.exe.new
+
+# Worker output (champions, benchmarks, .pck) written at run time
+results-cpp/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db

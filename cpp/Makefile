@@ -1,0 +1,39 @@
+# Fallback build without CMake. On Windows with MinGW-w64:  mingw32-make -C cpp
+# On Linux/macOS:  make -C cpp
+# Produces cpp/build/csqv_worker and cpp/build/csqv_check.
+CXX ?= g++
+CXXFLAGS ?= -O3 -std=c++17 -Icsqv
+LDFLAGS ?= -pthread
+
+BUILD := build
+
+.PHONY: all clean test
+all: $(BUILD)/csqv_worker $(BUILD)/csqv_check
+
+$(BUILD):
+	mkdir -p $(BUILD)
+
+$(BUILD)/csqv_worker: csqv/worker.cpp csqv/*.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/worker.cpp -o $@ $(LDFLAGS)
+
+$(BUILD)/csqv_check: csqv/check.cpp csqv/*.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/check.cpp -o $@
+
+$(BUILD)/csqv_save_test: csqv/save_test.cpp csqv/io.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/save_test.cpp -o $@
+
+$(BUILD)/csqv_report_test: csqv/report_test.cpp csqv/report.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/report_test.cpp -o $@
+
+$(BUILD)/csqv_center_polish_test: csqv/center_polish_test.cpp csqv/polish.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/center_polish_test.cpp -o $@
+
+# Build and run the unit tests (save: atomic+monotonic, no leak; report: --record flag;
+# center_polish: monotone exact-LP center squeeze).
+test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_polish_test
+	$(BUILD)/csqv_save_test
+	$(BUILD)/csqv_report_test
+	$(BUILD)/csqv_center_polish_test
+
+clean:
+	rm -rf $(BUILD)
