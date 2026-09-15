@@ -13,6 +13,7 @@ best-known, each independently verified feasible at zero tolerance.
 
 | N   | sum of radii     | Packomania best-known (2026-09-14) | status |
 |-----|------------------|------------------------------------|--------|
+| 119 | 5.749508688091   | 5.748642197922                     | **beats** the best-known by +0.0151% |
 | 120 | 5.774548479515   | 5.773179664810                     | **beats** the best-known by +0.0237% |
 | 121 | 5.799069987171   | 5.797468812113 (at submission)     | **accepted**; Packomania re-optimized and published 5.799103501951 |
 | 141 | 6.261881429857   | not published                      | feasible packing for an **untracked** N |
