@@ -11,11 +11,12 @@ best-known, each independently verified feasible at zero tolerance.
 
 ## Records in this repository
 
-Live best-known re-fetched 2026-09-16 (N=96, 97, 98, 118, 119) and from the
+Live best-known re-fetched 2026-09-16 (N=95, 96, 97, 98, 118, 119) and from the
 2026-09-15 page (N=120, 121).
 
 | N   | our packing (sum) | Packomania live best-known               | status |
 |-----|-------------------|------------------------------------------|--------|
+| 95  | 5.126321536373    | 5.125823937617 (Specht [2], 2026-09-16)  | **leads** live by +0.0097%; SEALED (jammed, ticket 47), held, not submitted |
 | 96  | 5.153337299999    | 5.152146722729 (Dutton [10], 2026-09-16) | **leads** live by +0.0231%; SEALED (jammed, ticket 47), held, not submitted |
 | 97  | 5.180768365834    | 5.180639279285 (Dutton [10], 2026-09-16) | **leads** live by +0.0025%; SEALED (jammed, ticket 47), held, not submitted |
 | 98  | 5.208554826179    | 5.206668546480 (Garg [18], 2026-09-16)   | **leads** live by +0.0362%; SEALED (jammed, ticket 47), held, not submitted |
