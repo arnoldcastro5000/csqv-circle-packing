@@ -13,10 +13,10 @@ future work.
 
 | field | value |
 |---|---|
-| result files | `csqv118.pck` (15 dp, strictly feasible), `n118-best.txt` (the centers) |
+| result files | `csqv118.pck` (15 dp, strictly feasible, SEALED at its jammed value), `n118-sealed.txt` (the jammed centers, the `.pck` source), `n118-best.txt` (the pre-seal worker centers) |
 | centers found by | the native C++ cold multi-start worker (`cpp/csqv/worker.cpp`, `search.hpp`), base_seed 2, thread seed 2, no LLM |
-| radii + `.pck` by | the native C++ exact LP + rounding-aware emit in `cpp/` (`cpp/csqv/lp.hpp`, `worker.cpp::emit_pck`) |
-| terminal squeeze | the exact-LP center squeeze via the analytic dual gradient (`cpp/csqv/polish.hpp::center_polish_analytic`); resume-squeezed to a strictly feasible optimum |
+| radii + `.pck` by | the exact-LP radii + rounding-aware feasibility shrink (`tools/emit_pck.py`, the parse-back safety loop) |
+| terminal squeeze | SEALED 2026-09-16: the first-order-squeezed champion was NOT jammed (Donev margin 9.9), so the jamming optimizer (`jam_slp`, a trust-region sequential-LP flex ascent) drove it to its same-basin jammed optimum (margin 0), a +3.20e-5 gain, then the `.pck` was emitted + zero-tol validated |
 | repo commit (code base) | branch `feat/csqv-analytic-dual-gradient`, base 8c11af7 |
 | primitives used | exact radii-by-LP for fixed centers; independent verifier recomputes containment, overlap, and the sum |
 | submitted to Packomania | NO. Held; a submission is the operator's call. |
@@ -25,10 +25,11 @@ future work.
 
 | quantity | value |
 |---|---|
-| sum of radii (this packing, as re-parsed from the 15-dp `.pck`) | 5.724587011021 |
-| in-memory C++ champion | 5.724587011138 |
+| sum of radii (SEALED, re-parsed from the 15-dp `.pck`) | 5.724613195610 |
+| sum before sealing (`.pck`, first-order squeezed) | 5.724587011021 |
+| sealing gain | +3.20e-5 (same-frame; the champion was un-jammed) |
 | Packomania live best-known (fetched 2026-09-16) | 5.723940934671 |
-| margin over the live record | +0.000646076 (about +0.0113%) |
+| margin over the live record | +0.000672261 (about +0.01174%) |
 
 The live best-known was fetched 2026-09-16 from `csqv/csqv.html`: N=118 =
 5.723940934671, credited to Zeeshan Tariq [20] (set 12-Sep-2026), unchanged from
@@ -39,7 +40,7 @@ the 2026-09-14 value except a last-digit rounding. N=118 is actively contested.
 `tools/validate_pck.py` re-parsed the exact `.pck` (radii read AS WRITTEN, no
 re-derivation) at ZERO tolerance:
 
-- 118 circles, radii in [0.031955, 0.061639], sorted by increasing radius.
+- 118 circles, radii in [0.031913, 0.061594], sorted by increasing radius.
 - Containment (centered side-1 square, frame center 0,0): max wall violation
   -1.0e-12 (inside, robust cushion).
 - Non-overlap (all 6903 pairs): max pair overlap -2.0e-12 (no overlap, robust

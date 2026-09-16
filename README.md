@@ -16,20 +16,24 @@ page (N=120, 121).
 
 | N   | our packing (sum) | Packomania live best-known               | status |
 |-----|-------------------|------------------------------------------|--------|
-| 98  | 5.208466965365    | 5.206668546480 (Garg [18], 2026-09-16)   | **leads** live by +0.0345%; held, not submitted |
-| 118 | 5.724587011021    | 5.723940934671 (Tariq [20], 2026-09-16)  | **leads** live by +0.0113%; held, not submitted |
-| 119 | 5.749508785837    | 5.748642197923 (Tariq [20], 2026-09-16)  | **leads** live by +0.0151%; held, not submitted |
+| 98  | 5.208554826179    | 5.206668546480 (Garg [18], 2026-09-16)   | **leads** live by +0.0362%; SEALED (jammed, ticket 47), held, not submitted |
+| 118 | 5.724613195610    | 5.723940934671 (Tariq [20], 2026-09-16)  | **leads** live by +0.0117%; SEALED (jammed, ticket 47), held, not submitted |
+| 119 | 5.749508785837    | 5.749519103944 (Castro [21], 2026-09-16) | submitted + accepted 2026-09-16; site re-optimized higher (+1.0e-5) to a value our jamming optimizer (ticket 47) independently reaches (5.749519103949) |
 | 120 | 5.774548479515    | 5.774582323763 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
 | 121 | 5.799069987171    | 5.799103501951 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
 | 141 | 6.261881429857    | 6.261919395210 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.8e-5), so live now exceeds our recorded value |
 | 142 | 6.289814405001    | 6.289851836935 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.7e-5), so live now exceeds our recorded value |
 | 143 | 6.312963889026    | 6.312993919570 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.0e-5), so live now exceeds our recorded value |
 
-We currently lead the live record on N=98, N=118, and N=119 (all held, not
-submitted); N=98 has the largest margin. Every N we submitted (120, 121, 141, 142, 143) was accepted and then
-re-optimized higher on the site (all credited to Castro [21]); the live values
-there now exceed our recorded packings, so they are no longer a lead. N=141-143,
-previously untracked, are now published (introduced 14-Sep-2026); none is marked
+We currently lead the live record on N=98 and N=118 (both held, not submitted,
+now SEALED at their jammed values by the ticket-47 jamming optimizer); N=98 has
+the largest margin. N=119 was submitted and accepted 2026-09-16 (credited to
+Castro [21]); the site then re-optimized it higher (+1.0e-5), and our jamming
+optimizer independently reaches that same re-optimized value to the float floor,
+confirming the site's re-optimizer is the same-basin jamming squeeze. Every N we
+submitted (119, 120, 121, 141, 142, 143) was accepted and then re-optimized
+higher on the site (all credited to Castro [21]). N=141-143, previously
+untracked, are now published (introduced 14-Sep-2026); none is marked
 proven-optimal.
 
 Records move daily. Re-fetch `https://www.packomania.com/csqv/txt/sumradii.txt` before
