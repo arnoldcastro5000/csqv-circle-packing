@@ -18,7 +18,7 @@ page (N=120, 121).
 |-----|-------------------|------------------------------------------|--------|
 | 98  | 5.208466965365    | 5.206668546480 (Garg [18], 2026-09-16)   | **leads** live by +0.0345%; held, not submitted |
 | 118 | 5.724587011021    | 5.723940934671 (Tariq [20], 2026-09-16)  | **leads** live by +0.0113%; held, not submitted |
-| 119 | 5.749508688091    | 5.748642197923 (Tariq [20], 2026-09-16)  | **leads** live by +0.0151%; held, not submitted |
+| 119 | 5.749508785837    | 5.748642197923 (Tariq [20], 2026-09-16)  | **leads** live by +0.0151%; held, not submitted |
 | 120 | 5.774548479515    | 5.774582323763 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
 | 121 | 5.799069987171    | 5.799103501951 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
 | 141 | 6.261881429857    | 6.261919395210 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.8e-5), so live now exceeds our recorded value |

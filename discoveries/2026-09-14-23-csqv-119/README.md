@@ -13,10 +13,10 @@ future work.
 
 | field | value |
 |---|---|
-| result files | `csqv119.pck` (15 dp, strictly feasible), `n119-best.txt` (the centers) |
+| result files | `csqv119.pck` (15 dp, strictly feasible), `n119-best.txt` (raw champion centers) |
 | centers found by | the native C++ cold multi-start worker (`cpp/csqv/worker.cpp`, `search.hpp`), base_seed 0, thread seed 0, no LLM |
 | radii + `.pck` by | the native C++ exact LP + rounding-aware emit in `cpp/` (`cpp/csqv/lp.hpp`, `worker.cpp::emit_pck`) |
-| terminal squeeze | the exact-LP center squeeze (`cpp/csqv/polish.hpp::center_polish`); the champion has about 4e-8 of center-polish headroom left, so it is squeezed |
+| terminal squeeze | the exact-LP center squeeze via the analytic dual gradient (`cpp/csqv/polish.hpp::center_polish_analytic`); re-squeezed to the analytic optimum on 2026-09-16, so the residual headroom is now zero |
 | repo commit (code base) | 537810f |
 | primitives used | exact radii-by-LP for fixed centers; independent verifier recomputes containment, overlap, and the sum |
 | submitted to Packomania | NO. Held; a submission is the operator's call. |
@@ -25,8 +25,8 @@ future work.
 
 | quantity | value |
 |---|---|
-| sum of radii (this packing, as re-parsed from the 15-dp `.pck`) | 5.749508688090632 |
-| sum of radii (in-memory C++ champion) | 5.749508688210 |
+| sum of radii (this packing, as re-parsed from the 15-dp `.pck`) | 5.749508785837 |
+| sum of radii (in-memory C++ champion, post re-squeeze) | 5.749508785956 |
 | Packomania live best-known (fetched 2026-09-14) | 5.748642197922 |
 | margin over the live record | +0.000866490 (about +0.0151%) |
 
