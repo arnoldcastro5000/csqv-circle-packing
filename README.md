@@ -62,10 +62,17 @@ with the exact provenance.
 
 The C++ worker (`cpp/`) runs, per restart: a varied construction, an LP-scaled overlap
 relaxation, the **exact-LP radii** for fixed centers, an L-BFGS penalty polish, and then
-a **`center_polish`** stage: a projected gradient ascent on the centers that maximizes the
-exact-LP radii sum (monotone). `center_polish` recovers the last ~1e-5 of sum the penalty
-polish leaves unclaimed, the same gap the Packomania re-optimization closed on N=121. See
+a **`center_polish_analytic`** stage: a projected gradient ascent on the centers that
+maximizes the exact-LP radii sum, using the LP dual as the **analytic** gradient (one LP solve
+per step, monotone). It recovers the last ~1e-5 of sum the penalty polish leaves unclaimed, the
+same gap the Packomania re-optimization closed on N=121. An optional `--spread` mode adds
+cross-thread basin de-duplication and low-discrepancy seed spreading (ADR 0002). See
 [`cpp/README.md`](cpp/README.md) for the full method, build, and run instructions.
+
+For a finished champion there is an optional **terminal second-order squeeze**
+(`problems/csqv/terminal_squeeze.py`, NumPy + SciPy): a full-space sparse NLP over (x, y, r)
+plus a guarded contact-graph KKT-Newton, run once on the single best packing. It is not part of
+the self-contained C++ worker. See `cpp/README.md` for the scope and limits.
 
 Key idea: for **fixed centers**, the optimal radii are the solution of a linear program
 (cheap and exact at any N). All the difficulty is in the **center arrangement**, so the
@@ -113,6 +120,8 @@ and outward-facing: verify rigorously first.
 ```
 cpp/           self-contained C++17 worker, tests, and its own README
 tools/         validate_pck.py, the zero-tolerance .pck verifier
+problems/csqv/ vendored trusted primitives + the terminal squeeze (NumPy + SciPy)
+tests/         test_terminal_squeeze.py
 discoveries/   verified record packings, each with a .pck and an honest README
 docs/adr/      architecture decision records
 docs/research/ the CSQV method, target-selection, and solver research notes
