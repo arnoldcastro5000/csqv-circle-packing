@@ -20,14 +20,16 @@ Live best-known re-fetched 2026-09-16 (N=118, 119) and from the 2026-09-15 page
 | 119 | 5.749508688091    | 5.748642197923 (Tariq [20], 2026-09-16)  | **leads** live by +0.0151%; held, not submitted |
 | 120 | 5.774548479515    | 5.774582323763 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
 | 121 | 5.799069987171    | 5.799103501951 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
-| 141 | 6.261881429857    | not published                            | feasible packing for an **untracked** N |
-| 142 | 6.289814405001    | not published                            | feasible packing for an **untracked** N |
-| 143 | 6.312963889026    | not published                            | feasible packing for an **untracked** N |
+| 141 | 6.261881429857    | 6.261919395210 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.8e-5), so live now exceeds our recorded value |
+| 142 | 6.289814405001    | 6.289851836935 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.7e-5), so live now exceeds our recorded value |
+| 143 | 6.312963889026    | 6.312993919570 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.0e-5), so live now exceeds our recorded value |
 
 We currently lead the live record only on N=118 and N=119 (both held, not
-submitted). N=120 and N=121 were accepted and then re-optimized higher on the
-site (both credited to Castro [21]); the live values there now exceed our recorded
-packings, so they are no longer a lead.
+submitted). Every N we submitted (120, 121, 141, 142, 143) was accepted and then
+re-optimized higher on the site (all credited to Castro [21]); the live values
+there now exceed our recorded packings, so they are no longer a lead. N=141-143,
+previously untracked, are now published (introduced 14-Sep-2026); none is marked
+proven-optimal.
 
 Records move daily. Re-fetch `https://www.packomania.com/csqv/txt/sumradii.txt` before
 trusting any comparison above.
