@@ -63,7 +63,7 @@ So both N=120 and N=121 currently show a live value above the packing recorded h
 
 ## Honest provenance
 
-These packings were found by a **numerical search** (a hand-written cold multi-start, then
+These packings were found by a **numerical search** (an AI-authored cold multi-start, then
 the native C++ worker), **not** by an LLM. They prove the targets are beatable and are
 offered as verified feasible packings. Each discovery folder carries its own `README.md`
 with the exact provenance.

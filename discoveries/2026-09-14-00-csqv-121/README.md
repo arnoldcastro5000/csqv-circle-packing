@@ -13,7 +13,7 @@ shrink. The native C++ exact LP (`cpp/csqv/lp.hpp`) is strictly feasible to abou
 feasible. The gap 5.799074 vs 5.799070 is LP PRECISION on the same centers, not a
 better arrangement.
 
-IMPORTANT, honest provenance: this packing was found by a HAND-WRITTEN numerical
+IMPORTANT, honest provenance: this packing was found by an AI-authored numerical
 search, NOT by the LLM-evolution loop. It is a solver-tooling result that proves
 the target is beatable. Making it a true Crucible-Loop (LLM-evolved) discovery is
 future work.
@@ -23,7 +23,7 @@ future work.
 | field | value |
 |---|---|
 | result files | `csqv121.pck` (15 dp, strictly feasible), `n121-best.txt` (the centers) |
-| centers found by | `discoveries/2026-09-13-20-csqv-121/run_scalable.py` (hand-written cold multi-start, seed 0, no LLM) |
+| centers found by | `discoveries/2026-09-13-20-csqv-121/run_scalable.py` (AI-authored cold multi-start, seed 0, no LLM) |
 | radii + `.pck` by | the native C++ exact LP + rounding-aware emit in `cpp/` (`cpp/csqv/lp.hpp`, `worker.cpp::emit_pck`) |
 | repo commit (code base) | see `git log` at upload time |
 | primitives used | exact radii-by-LP for fixed centers; independent verifier recomputes containment, overlap, and the sum |

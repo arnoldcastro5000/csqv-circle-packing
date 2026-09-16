@@ -4,7 +4,7 @@ An improved packing for the Packomania CSQV problem (variable-radii circles in a
 unit square, maximize the sum of radii) at N = 121. It beats the published
 best-known and was submitted to Packomania on 2026-09-14.
 
-IMPORTANT, honest provenance: this packing was found by a HAND-WRITTEN numerical
+IMPORTANT, honest provenance: this packing was found by an AI-authored numerical
 search, NOT by the LLM-evolution loop. It is a solver-tooling result that proves
 the target is beatable and supplies the fast primitives the LLM loop needs. Making
 this a true Crucible-Loop (LLM-evolved) discovery is future work (see "Next").
@@ -15,7 +15,7 @@ this a true Crucible-Loop (LLM-evolved) discovery is future work (see "Next").
 |---|---|
 | result files | `csqv121.pck` (submitted), plus the coordinates it contains |
 | generating code | `run_scalable.py` + `scalable_polish.py` (this directory) |
-| method | hand-written cold multi-start (no LLM) |
+| method | AI-authored cold multi-start (no LLM) |
 | repo commit (code base) | 34a6633 |
 | primitives used | `problems.csqv.problem.radii_lp` (exact radii for fixed centers), `problems.csqv.data`/verifier |
 | submitted to | E. Specht, packomania.com, 2026-09-14 |
@@ -85,5 +85,5 @@ tolerance before trusting any value. Records move daily; re-fetch
 
 Wire `relax` (grow-and-push) and `scalable_polish` as fixed `ctx` primitives (like
 `radii_lp` / `polish` / `defect_move`), then run a cold LLM-evolution wave at
-N=121 seeded from this champion. The hand-written chain plateaus near 5.79907; the
+N=121 seeded from this champion. The AI-authored chain plateaus near 5.79907; the
 LLM can evolve the orchestration and constructions to try for more.

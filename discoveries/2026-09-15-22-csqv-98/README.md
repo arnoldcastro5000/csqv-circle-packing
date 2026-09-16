@@ -4,7 +4,7 @@ An improved packing for the Packomania CSQV problem (variable-radii circles in a
 unit square, maximize the sum of radii) at N = 98. It beats the published
 best-known by the largest margin of the current held candidates.
 
-IMPORTANT, honest provenance: this packing was found by a HAND-WRITTEN numerical
+IMPORTANT, honest provenance: this packing was found by an AI-authored numerical
 search, NOT by the LLM-evolution loop. It is a solver-tooling result that proves
 the target is beatable. Making it a true Crucible-Loop (LLM-evolved) discovery is
 future work.
