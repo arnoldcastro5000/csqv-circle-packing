@@ -11,11 +11,12 @@ best-known, each independently verified feasible at zero tolerance.
 
 ## Records in this repository
 
-Live best-known re-fetched 2026-09-16 (N=118, 119) and from the 2026-09-15 page
-(N=120, 121).
+Live best-known re-fetched 2026-09-16 (N=98, 118, 119) and from the 2026-09-15
+page (N=120, 121).
 
 | N   | our packing (sum) | Packomania live best-known               | status |
 |-----|-------------------|------------------------------------------|--------|
+| 98  | 5.208466965365    | 5.206668546480 (Garg [18], 2026-09-16)   | **leads** live by +0.0345%; held, not submitted |
 | 118 | 5.724587011021    | 5.723940934671 (Tariq [20], 2026-09-16)  | **leads** live by +0.0113%; held, not submitted |
 | 119 | 5.749508688091    | 5.748642197923 (Tariq [20], 2026-09-16)  | **leads** live by +0.0151%; held, not submitted |
 | 120 | 5.774548479515    | 5.774582323763 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
@@ -24,8 +25,8 @@ Live best-known re-fetched 2026-09-16 (N=118, 119) and from the 2026-09-15 page
 | 142 | 6.289814405001    | 6.289851836935 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.7e-5), so live now exceeds our recorded value |
 | 143 | 6.312963889026    | 6.312993919570 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.0e-5), so live now exceeds our recorded value |
 
-We currently lead the live record only on N=118 and N=119 (both held, not
-submitted). Every N we submitted (120, 121, 141, 142, 143) was accepted and then
+We currently lead the live record on N=98, N=118, and N=119 (all held, not
+submitted); N=98 has the largest margin. Every N we submitted (120, 121, 141, 142, 143) was accepted and then
 re-optimized higher on the site (all credited to Castro [21]); the live values
 there now exceed our recorded packings, so they are no longer a lead. N=141-143,
 previously untracked, are now published (introduced 14-Sep-2026); none is marked
