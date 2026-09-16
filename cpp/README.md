@@ -16,9 +16,12 @@ One restart mirrors the Python chain exactly in structure:
 2. `growpush` - LP-scaled overlap relaxation
 3. `radii_lp` - the **exact** optimal radii for fixed centers (an LP)
 4. `scalable_polish` - L-BFGS on a smooth overlap/wall penalty, rising penalty weight
-5. `center_polish` - on a new best, an exact-LP center squeeze: a projected gradient
-   ascent on the centers that maximizes the exact-LP radii sum (monotone). It recovers
-   the last ~1e-5 of sum the penalty polish leaves unclaimed.
+5. `center_polish_analytic` - on a refinement-regime new best, and once at worker exit, an
+   exact-LP center squeeze: the LP dual gives the **analytic** gradient of the optimal radii
+   sum over the centers, so the projected gradient ascent needs one LP solve per step, not one
+   per coordinate (monotone). It recovers the last ~1e-5 of sum the penalty polish leaves
+   unclaimed. A coarse-jump gate skips the squeeze on the early cold jumps; the exit squeeze
+   still guarantees the delivered champion is fully squeezed.
 6. `verify_and_score` - the feasibility shrink and the score
 7. perturb-the-best restarts for diversity; the best per seed persists atomically
 
@@ -46,11 +49,11 @@ python3 tools/validate_pck.py discoveries/2026-09-14-15-csqv-120/csqv120.pck
 Records move daily: re-fetch `https://www.packomania.com/csqv/txt/sumradii.txt` for the
 LIVE best-known before any submission.
 
-> Note: the original research monorepo also has a Python "source of truth" verifier
-> (`verify_champion.py`) and a parity harness (`make_golden.py`, `run_parity.py`,
-> `cross_validate.py`) that re-derive radii with the trusted `radii_lp`. Those depend on
-> the monorepo's `problems/csqv/` package and are not included here; `tools/validate_pck.py`
-> is the self-contained check for a finished `.pck`.
+> Note: this repository now vendors the trusted verifier primitives (`problems/csqv/`:
+> `radii_lp`, `verify_and_score`, `canonical_feasible`, `pairwise_distances`) so the terminal
+> squeeze below runs here. The monorepo's `verify_champion.py` and parity harness
+> (`make_golden.py`, `run_parity.py`, `cross_validate.py`) are still not included;
+> `tools/validate_pck.py` is the self-contained check for a finished `.pck`.
 
 ## Packomania `.pck` compliance (packomania.com/hints.html)
 
@@ -95,6 +98,12 @@ cpp/build/csqv_worker 121 3600 0 12 results-cpp "Arnold Castro" 15 --record 5.79
 
 - `threads` independent workers use seeds `base_seed .. base_seed+threads-1`. Use your
   core count (e.g. 12 on a Ryzen 5 5600H).
+- `--spread` (OPTIONAL) turns on cross-thread basin de-duplication and low-discrepancy seed
+  spreading (ADR 0002): each thread searches a disjoint, evenly-spread slice of the seed
+  sequence, a seeds-only contact-graph fingerprint gates duplicate cold basins across threads,
+  and a defect kick escapes an already-seen basin. `--count` only COUNTS distinct basins (a
+  control for the A/B). With neither flag the worker runs the independent-parallel search
+  unchanged.
 - `--record <live_sum>` is OPTIONAL and advisory only. The search never uses it; it just
   labels the console with the gap to that value and prints `*** RECORD BEATEN ***` once the
   sum clears it. Records move daily, so the worker does NOT hardcode one: pass the live
@@ -115,6 +124,30 @@ cpp/build/csqv_worker 121 3600 0 12 results-cpp "Arnold Castro" 15 --record 5.79
   To seed a fresh search from a known champion, copy it into `n<N>-s<seed>-best.txt` first.
 - A cross of the live record prints `*** RECORD BEATEN ***`. Confirm the emitted `.pck`
   with `tools/validate_pck.py` before believing it.
+
+## Terminal second-order squeeze (optional, needs NumPy + SciPy)
+
+The in-loop `center_polish_analytic` is FIRST-ORDER: it stalls ~1e-5 short at degenerate
+contacts. `problems/csqv/terminal_squeeze.py` is a ONE-TIME post-processor for the single best
+champion: a full-space sparse second-order NLP over (x, y, r) (SciPy `trust-constr`, with the
+exact sparse Jacobian and Lagrangian Hessian), a monotone basin hop across the LP-value kink,
+and a guarded rank-2 contact-graph KKT-Newton for the last digits (an nnls false-contact drop
+and the Donev LP jamming certificate guard it). The terminal `radii_lp` + feasibility shrink +
+a zero-tolerance check is the hard backstop.
+
+```sh
+PYTHONPATH=. python3 cpp/tools/terminal_squeeze_accept.py [hops]
+```
+
+`cpp/csqv/squeeze_check.cpp` (target `csqv_squeeze_check`) is the C++ analytic baseline: it
+loads a `.pck`, re-derives the radii, applies `center_polish_analytic`, and reports the
+residual gain, so you can see how much a champion is still un-squeezed before the second-order
+pass.
+
+> Scope note: on an already-strong champion the second-order squeeze reaches ~72-75% of the
+> remaining gap, then plateaus. Such a champion is often NOT jammed (a non-zero Donev flex), so
+> the residual is a JAMMING gap, not a precision gap; the Newton is a precision step that needs
+> a jammed input. See `docs/research/phase-2-csqv-terminal-postprocessing.md`.
 
 ## Startup accuracy/precision benchmark
 
@@ -146,15 +179,24 @@ cpp/
     geometry.hpp        frame, wall_slack, feasibility shrink, verify_and_score
     lp.hpp              radii_lp: bounded simplex + lazy constraint generation
     polish.hpp          penalty objective, projected L-BFGS (scalable_polish),
-                        and center_polish (exact-LP center squeeze)
+                        and center_polish_analytic (analytic-gradient exact-LP squeeze)
+    fingerprint.hpp     D4-invariant Weisfeiler-Lehman basin hash (--spread)
+    spread.hpp          low-discrepancy seed spread + defect kick (--spread)
     search.hpp          construct + growpush
     benchmark.hpp       deterministic startup accuracy/precision self-benchmark
     io.hpp              atomic, monotonic champion save (no temp leak)
     report.hpp          the advisory --record flag
     worker.cpp          multi-threaded restart loop, resume, atomic save, .pck emit
     check.cpp           read centers -> radii_lp + verify_and_score
-    *_test.cpp          unit tests (save, report, center_polish)
+    squeeze_check.cpp   analytic center_polish_analytic squeeze audit of a .pck
+    *_test.cpp          unit tests (save, report, center_polish, fingerprint, spread)
+  tools/
+    terminal_squeeze_accept.py  CLI for the terminal second-order squeeze
   CMakeLists.txt   Makefile   README.md
+../problems/csqv/     vendored trusted primitives (radii_lp, verify_and_score,
+                      canonical_feasible) + terminal_squeeze.py (needs SciPy)
+../tests/
+    test_terminal_squeeze.py    derivatives FD-verified; the squeeze pipeline
 ../tools/
     validate_pck.py     self-contained zero-tolerance .pck verifier (pure NumPy)
 ```

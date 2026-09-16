@@ -89,6 +89,85 @@ int main() {
     CHECK(csqv::verify_and_score(x, y, r, n, csqv::TOL, sc), "N=9 result is feasible");
   }
 
+  // Analytic dual gradient (ticket 40). On a GENERIC config (deterministic pseudo-random
+  // centers, away from the walls and the x=y / x=1-y tie lines) the value function is smooth,
+  // so the analytic gradient from the LP duals must agree with the central finite-difference
+  // gradient of lp_score and must be a genuine ascent direction.
+  {
+    const int n = 8;
+    std::vector<double> x(n), y(n);
+    unsigned s = 2463534242u;
+    auto rnd = [&]() {  // xorshift, deterministic; returns [0,1)
+      s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+      return (s >> 8) / 16777216.0;
+    };
+    for (int i = 0; i < n; ++i) { x[i] = 0.15 + 0.70 * rnd(); y[i] = 0.15 + 0.70 * rnd(); }
+
+    std::vector<double> gx, gy;
+    csqv::center_gradient(x, y, n, gx, gy);
+
+    // Central finite-difference gradient of lp_score, same eps as center_polish.
+    const double eps = 1e-6;
+    std::vector<double> fx(n), fy(n);
+    for (int i = 0; i < n; ++i) {
+      const double ox = x[i];
+      const double xp = std::min(ox + eps, csqv::SIDE), xm = std::max(ox - eps, 0.0);
+      x[i] = xp; const double fxp = csqv::lp_score(x, y, n);
+      x[i] = xm; const double fxm = csqv::lp_score(x, y, n);
+      x[i] = ox; fx[i] = (fxp - fxm) / (xp - xm);
+      const double oy = y[i];
+      const double yp = std::min(oy + eps, csqv::SIDE), ym = std::max(oy - eps, 0.0);
+      y[i] = yp; const double fyp = csqv::lp_score(x, y, n);
+      y[i] = ym; const double fym = csqv::lp_score(x, y, n);
+      y[i] = oy; fy[i] = (fyp - fym) / (yp - ym);
+    }
+
+    double dot = 0.0, na = 0.0, nf = 0.0;
+    for (int i = 0; i < n; ++i) {
+      dot += gx[i] * fx[i] + gy[i] * fy[i];
+      na += gx[i] * gx[i] + gy[i] * gy[i];
+      nf += fx[i] * fx[i] + fy[i] * fy[i];
+    }
+    CHECK(na > 1e-12 && nf > 1e-12, "both gradients are non-trivial on a generic config");
+    const double cosine = dot / (std::sqrt(na) * std::sqrt(nf) + 1e-30);
+    CHECK(cosine > 0.999, "analytic dual gradient matches the finite-difference gradient");
+
+    // The analytic gradient is a real ascent direction: a small step along it raises lp_score.
+    const double base = csqv::lp_score(x, y, n);
+    const double inv = 1.0 / std::sqrt(na);
+    std::vector<double> ax(n), ay(n);
+    for (int i = 0; i < n; ++i) {
+      ax[i] = std::min(std::max(x[i] + 1e-5 * gx[i] * inv, 0.0), csqv::SIDE);
+      ay[i] = std::min(std::max(y[i] + 1e-5 * gy[i] * inv, 0.0), csqv::SIDE);
+    }
+    CHECK(csqv::lp_score(ax, ay, n) > base, "a step along the analytic gradient increases the score");
+  }
+
+  // center_polish_analytic parity: same crowded N=2 start as case 1. It must climb clearly,
+  // stay feasible, and reach the same two-circle optimum as the finite-difference polish.
+  {
+    const int n = 2;
+    std::vector<double> x = {0.5, 0.5}, y = {0.4, 0.6}, r;
+    const double before = score_of(x, y, n);
+    const double after = csqv::center_polish_analytic(x, y, r, n);
+    CHECK(after > before + 0.1, "analytic polish: crowded start must improve clearly");
+    CHECK(after <= 0.585787 + 1e-6, "analytic polish: cannot exceed the two-circle optimum");
+    CHECK(in_box(x, y, n), "analytic polish: centers stay in the box");
+    double sc;
+    CHECK(csqv::verify_and_score(x, y, r, n, csqv::TOL, sc), "analytic polish: result is feasible");
+    CHECK(std::fabs(sc - after) < 1e-12, "analytic polish: returned score matches verify_and_score");
+  }
+
+  // Monotone on a near-optimal input: the symmetric two-circle diagonal optimum must not regress.
+  {
+    const int n = 2;
+    const double r0 = 1.0 / (2.0 + std::sqrt(2.0));
+    std::vector<double> x = {r0, 1.0 - r0}, y = {r0, 1.0 - r0}, r;
+    const double before = score_of(x, y, n);
+    const double after = csqv::center_polish_analytic(x, y, r, n);
+    CHECK(after >= before - 1e-10, "analytic polish: near-optimal input must not regress");
+  }
+
   if (g_failures == 0) {
     std::printf("center_polish_test: all checks passed\n");
     return 0;

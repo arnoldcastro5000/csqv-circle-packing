@@ -26,15 +26,18 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 #include "benchmark.hpp"
+#include "fingerprint.hpp"
 #include "geometry.hpp"
 #include "io.hpp"
 #include "lp.hpp"
 #include "polish.hpp"
 #include "report.hpp"
 #include "search.hpp"
+#include "spread.hpp"
 
 namespace {
 
@@ -157,7 +160,70 @@ struct Shared {
   Clock::time_point t0;
   std::atomic<double> global_best{-1.0};
   std::mutex best_mtx;  // serializes the global-best file write within this process
+
+  // Basin-dedup + seed-spread mode (ticket 42 / ADR 0002). spread_mode = the new behavior (spread
+  // seeds + seeds-only dedup gate + escape + basin counting). count_mode = basin COUNTING ONLY (no
+  // spread, no gate, no escape); it exists so the A/B can instrument the current search as a fair
+  // control without changing the shipped baseline. With NEITHER flag the worker runs the current
+  // independent-parallel search byte-for-byte (no fingerprint, no lock on the hot path).
+  bool spread_mode = false;
+  bool count_mode = false;
+  int base_seed = 0;
+  int threads = 1;
+  std::unordered_set<uint64_t> seen;  // basin fingerprints found across ALL threads
+  std::mutex seen_mtx;                 // guards `seen`
+  // Memory cap on `seen` (fingerprints are ~16 B each; the target is N<=100, tens of MB). When the
+  // cap is hit the set stops growing and the gate degrades gracefully to plain multistart (no more
+  // skips), so a multi-day run cannot climb without bound. See code-review F2.
+  long seen_cap = 4000000;
+
+  // Record a basin fingerprint. Returns true if it is NEW (should be kept, not escaped), false if
+  // another search already found this basin. When the cap is hit it returns true without inserting,
+  // so the gate stops interfering (graceful degradation). `seen.size()` is the distinct-basin count.
+  bool record_basin(uint64_t fp) {
+    std::lock_guard<std::mutex> lk(seen_mtx);
+    if (static_cast<long>(seen.size()) >= seen_cap) return true;
+    return seen.insert(fp).second;
+  }
+  long distinct_basins() {
+    std::lock_guard<std::mutex> lk(seen_mtx);
+    return static_cast<long>(seen.size());
+  }
+  bool instrumented() const { return spread_mode || count_mode; }
 };
+
+// Publish a champion to the global best file + its .pck, monotonically and mutex-guarded, and
+// bump the global_best gauge. Returns true if the global write won. The per-seed file is saved
+// by the caller: it is the resume anchor and must persist even when a global publish is skipped
+// (canonical_feasible is the stricter deliverable gate; the per-seed champion is kept regardless).
+bool publish_global(Shared& sh, int seed, const std::vector<double>& x,
+                    const std::vector<double>& y, const std::vector<double>& r, double s) {
+  std::lock_guard<std::mutex> lk(sh.best_mtx);
+  const std::string gpath = sh.out_dir + "/n" + std::to_string(sh.n) + "-best.txt";
+  csqv::Packing canon;
+  if (csqv::canonical_feasible(x, y, r, sh.n, csqv::TOL, canon) &&
+      save_champion(gpath, sh.n, seed, x, y, r, s)) {
+    emit_pck(sh.out_dir + "/csqv" + std::to_string(sh.n) + ".pck", canon, sh.author, sh.pck_dp);
+    if (s > sh.global_best.load()) sh.global_best.store(s);
+    return true;
+  }
+  return false;
+}
+
+// Console line for a newly published global best, with the record gap and the RECORD BEATEN
+// banner when a record was supplied. `pos` is the source token ("r<restarts>" mid-run, "final"
+// for the exit squeeze).
+void announce(Shared& sh, int seed, const std::string& pos, double s) {
+  std::lock_guard<std::mutex> lk(g_io);
+  if (record_supplied(sh.record)) {
+    const char* cross = beats_record(sh.record, s) ? "  *** RECORD BEATEN ***" : "";
+    std::printf("  [%6.0fs s%d %s] best %.9f gap %+.5f%%%s\n", elapsed(sh.t0), seed, pos.c_str(),
+                s, csqv::gap_percent(sh.record, s), cross);
+  } else {
+    std::printf("  [%6.0fs s%d %s] best %.9f\n", elapsed(sh.t0), seed, pos.c_str(), s);
+  }
+  std::fflush(stdout);
+}
 
 void worker_loop(Shared& sh, int seed) {
   csqv::Rng rng(static_cast<uint64_t>(seed) * 0x9e3779b97f4a7c15ULL + 1);
@@ -167,6 +233,7 @@ void worker_loop(Shared& sh, int seed) {
                                 std::to_string(seed) + "-best.txt";
 
   double best = -1.0;
+  bool squeezed = false;  // whether the current incumbent (bx, by) has had its center squeeze
   std::vector<double> bx, by;
   if (resume(seed_path, n, bx, by, best)) {
     {
@@ -182,29 +249,49 @@ void worker_loop(Shared& sh, int seed) {
     // lift the score). This immediately banks the ~1e-5 the penalty polish left behind, so a
     // resumed run starts from a fully-squeezed incumbent.
     std::vector<double> rr;  // center_polish fills this with the exact radii for the result.
-    double sc = csqv::center_polish(bx, by, rr, n);
-    if (std::isfinite(sc) && sc > best) {
-      best = sc;
-      save_champion(seed_path, n, seed, bx, by, rr, sc);
-    }
-    // Seed the GLOBAL best from the resumed champion so n<N>-best.txt and the .pck reflect it
-    // even if this run never improves (monotonic, so it only lifts the global, never lowers it).
+    double sc = csqv::center_polish_analytic(bx, by, rr, n);
     if (std::isfinite(sc)) {
-      std::lock_guard<std::mutex> lk(sh.best_mtx);
-      const std::string gpath = sh.out_dir + "/n" + std::to_string(n) + "-best.txt";
-      csqv::Packing canon;
-      if (csqv::canonical_feasible(bx, by, rr, n, csqv::TOL, canon) &&
-          save_champion(gpath, n, seed, bx, by, rr, sc)) {
-        emit_pck(sh.out_dir + "/csqv" + std::to_string(n) + ".pck", canon, sh.author, sh.pck_dp);
-        if (sc > sh.global_best.load()) sh.global_best.store(sc);
-      }
+      squeezed = true;  // bx, by now sit at the local optimum: the incumbent is squeezed.
+      if (sc > best) best = sc;
+      save_champion(seed_path, n, seed, bx, by, rr, sc);
+      // Seed the GLOBAL best from the resumed champion so n<N>-best.txt and the .pck reflect it
+      // even if this run never improves (monotonic, so it only lifts the global, never lowers it).
+      publish_global(sh, seed, bx, by, rr, sc);
     }
   }
 
+  // Seed-spread state (spread_mode only). Each thread owns a disjoint, evenly-spread slice of the
+  // low-discrepancy sequence (stride = thread count), so threads start cold searches in different
+  // regions instead of sharing kinds[restarts % 4]. See ticket 42, spec section 1.
+  const int t = seed - sh.base_seed;
+  const int stride = std::max(1, sh.threads);
+  csqv::LowDisc ld(4);
+  uint64_t draw = 0;
+
   std::vector<double> x, y, r;
   long restarts = 0;
+
+  // Bank a descent the instant it improves this thread's best, so no improvement is ever lost, even
+  // one that the escape hop later overwrites (code-review F4). Monotone: saves + publishes only on a
+  // strict gain. Sets squeezed=false so the terminal squeeze still lifts the champion.
+  auto consider = [&](double s, const std::vector<double>& cx, const std::vector<double>& cy,
+                      const std::vector<double>& cr) {
+    if (s > best) {
+      best = s;
+      bx = cx;
+      by = cy;
+      squeezed = false;
+      save_champion(seed_path, n, seed, cx, cy, cr, s);
+      if (publish_global(sh, seed, cx, cy, cr, s))
+        announce(sh, seed, "r" + std::to_string(restarts), s);
+    }
+  };
   while (elapsed(sh.t0) < sh.budget) {
-    if (!bx.empty() && csqv::uni(rng) < 0.6) {
+    // A warm restart perturbs the thread's own best: this is DEPTH (the MBH walk), never gated by
+    // the basin dedup. A cold restart builds a fresh construction: this is the SEED, which the
+    // dedup gates in spread_mode.
+    const bool warm = (!bx.empty() && csqv::uni(rng) < 0.6);
+    if (warm) {
       const double scale = (csqv::uni(rng) < 0.34) ? 0.006 : (csqv::uni(rng) < 0.5 ? 0.012 : 0.03);
       x = bx;
       y = by;
@@ -212,45 +299,67 @@ void worker_loop(Shared& sh, int seed) {
         x[i] = std::min(std::max(x[i] + csqv::gauss(rng, scale), 0.001), 0.999);
         y[i] = std::min(std::max(y[i] + csqv::gauss(rng, scale), 0.001), 0.999);
       }
+    } else if (sh.spread_mode) {
+      csqv::construct_spread(n, ld, static_cast<uint64_t>(t) + draw * stride, rng, x, y);
+      ++draw;
     } else {
       csqv::construct(n, kinds[restarts % 4], rng, x, y);
     }
     csqv::growpush(x, y, n, rng);
     r = csqv::radii_lp(x, y, n);
     double s = csqv::scalable_polish(x, y, r, n);
-    // A new best earns the exact-LP center squeeze: it recovers the last ~1e-5 of sum the
-    // penalty polish leaves unclaimed. It is monotone, so `s` only rises and stays > best.
-    if (s > best) s = csqv::center_polish(x, y, r, n);
+    // NO mid-run center squeeze. center_polish costs up to max_iter x 4n exact-LP solves, and a
+    // warm mid-N push produces frequent SMALL (refinement) new bests, so squeezing each one
+    // stalls the restart rate (the user-observed slowdown at N=123/124). The squeeze is monotone,
+    // and the final squeeze at loop exit plus the resume squeeze on relaunch fully squeeze the
+    // delivered champion, so a mid-run squeeze would change only intermediate on-disk state, never
+    // the delivered per-seed file or .pck. So defer the whole squeeze to the end. See ticket 35.
     ++restarts;
-    if (s > best) {
-      best = s;
-      bx = x;
-      by = y;
-      save_champion(seed_path, n, seed, x, y, r, s);
-      // Update the global best. The mutex serializes threads in THIS process; save_champion's
-      // read-before-write makes the global files monotonic across processes too, and the .pck
-      // is emitted ONLY when the .txt write actually won, so the two stay consistent.
-      {
-        std::lock_guard<std::mutex> lk(sh.best_mtx);
-        const std::string gpath = sh.out_dir + "/n" + std::to_string(n) + "-best.txt";
-        csqv::Packing canon;
-        if (csqv::canonical_feasible(x, y, r, n, csqv::TOL, canon) &&
-            save_champion(gpath, n, seed, x, y, r, s)) {
-          emit_pck(sh.out_dir + "/csqv" + std::to_string(n) + ".pck", canon, sh.author, sh.pck_dp);
-          if (s > sh.global_best.load()) sh.global_best.store(s);
-          std::lock_guard<std::mutex> lkio(g_io);
-          if (record_supplied(sh.record)) {
-            const char* cross = beats_record(sh.record, s) ? "  *** RECORD BEATEN ***" : "";
-            std::printf("  [%6.0fs s%d r%ld] best %.9f gap %+.5f%%%s\n", elapsed(sh.t0), seed,
-                        restarts, s, csqv::gap_percent(sh.record, s), cross);
-          } else {
-            std::printf("  [%6.0fs s%d r%ld] best %.9f\n", elapsed(sh.t0), seed, restarts, s);
-          }
-          std::fflush(stdout);
+
+    // Bank any improvement from THIS descent before the dedup can overwrite it (F4).
+    consider(s, x, y, r);
+
+    // Basin bookkeeping, ONLY when instrumented (spread or count). The plain baseline (no flag)
+    // stays byte-identical, with no fingerprint and no lock on the hot path (F1). Fingerprint every
+    // converged optimum and record it, so `distinct_basins` is the coverage metric in both A/B arms
+    // (--count vs --spread). In spread_mode ONLY, a COLD seed that re-descends an already-seen basin
+    // escapes: hop with a combinatorial defect kick (a small perturbation collapses back) up to 3
+    // times, then the next iteration draws a fresh spread seed. Warm (DEPTH) restarts are never
+    // gated, and every hop is still banked by consider().
+    if (sh.instrumented()) {
+      uint64_t fp = csqv::basin_fingerprint(x, y, r, n);
+      bool was_new = sh.record_basin(fp);
+      if (sh.spread_mode && !warm && !was_new) {
+        const int kremove = std::max(1, n / 25);
+        for (int attempt = 0; attempt < 3 && !was_new; ++attempt) {
+          csqv::defect_kick(x, y, n, rng, kremove);
+          csqv::growpush(x, y, n, rng);
+          r = csqv::radii_lp(x, y, n);
+          s = csqv::scalable_polish(x, y, r, n);
+          consider(s, x, y, r);  // a hop can find a new best too; never lose it
+          fp = csqv::basin_fingerprint(x, y, r, n);
+          was_new = sh.record_basin(fp);
         }
       }
     }
   }
+
+  // Final squeeze on clean exit (budget reached). The worker never squeezes mid-run, so this
+  // thread's champion is saved un-squeezed; squeeze it once here so the delivered per-seed file,
+  // the global best, and the .pck are fully squeezed. It is monotone, so it only lifts. Skip it
+  // when the incumbent is already squeezed (a resumed champion that saw no new best), which
+  // spares a redundant O(4n) ascent. A hard-killed run (SIGTERM/taskkill) skips this, but the
+  // resume squeeze recovers it on the next launch. See tickets 34 and 35.
+  if (!bx.empty() && !squeezed) {
+    std::vector<double> rr;
+    const double sc = csqv::center_polish_analytic(bx, by, rr, n);
+    if (std::isfinite(sc) && sc > best) {
+      best = sc;
+      save_champion(seed_path, n, seed, bx, by, rr, sc);
+      if (publish_global(sh, seed, bx, by, rr, sc)) announce(sh, seed, "final", sc);
+    }
+  }
+
   std::lock_guard<std::mutex> lk(g_io);
   std::printf("  [s%d] done best=%.9f restarts=%ld\n", seed, best, restarts);
   std::fflush(stdout);
@@ -261,6 +370,21 @@ int main(int argc, char** argv) {
   // it first, then parse the positionals from what remains.
   std::vector<std::string> args(argv + 1, argv + argc);
   const csqv::RecordArg rec = csqv::parse_record_flag(args);
+  // --spread turns on the basin-dedup + seed-spread path (ticket 42). --count turns on basin
+  // COUNTING ONLY (the A/B control that instruments the current search without the gate/escape).
+  // Absent both = the byte-identical production baseline. Parse and strip before the positionals.
+  bool spread_mode = false, count_mode = false;
+  for (auto it = args.begin(); it != args.end();) {
+    if (*it == "--spread") {
+      spread_mode = true;
+      it = args.erase(it);
+    } else if (*it == "--count") {
+      count_mode = true;
+      it = args.erase(it);
+    } else {
+      ++it;
+    }
+  }
   if (args.size() < 3) {
     std::fprintf(stderr,
                  "usage: %s <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp] "
@@ -280,6 +404,10 @@ int main(int argc, char** argv) {
   sh.author = (args.size() > 5) ? args[5] : "Arnold Castro";
   sh.pck_dp = (args.size() > 6) ? std::atoi(args[6].c_str()) : 15;  // .pck decimals; feasible as written
   sh.record = rec.value;  // no_record() when --record is absent/malformed; the search never uses it
+  sh.spread_mode = spread_mode;
+  sh.count_mode = count_mode;
+  sh.base_seed = base_seed;
+  sh.threads = threads;
   sh.t0 = Clock::now();
 
   std::error_code ec;
@@ -292,8 +420,9 @@ int main(int argc, char** argv) {
       std::snprintf(rec, sizeof(rec), "%.9f", sh.record);
     else
       std::snprintf(rec, sizeof(rec), "not supplied (pass --record for a gap)");
-    std::printf("CSQV worker: N=%d budget=%.0fs threads=%d base_seed=%d record=%s out=%s\n",
-                sh.n, sh.budget, threads, base_seed, rec, sh.out_dir.c_str());
+    const char* mode = sh.spread_mode ? "spread" : (sh.count_mode ? "count" : "baseline");
+    std::printf("CSQV worker: N=%d budget=%.0fs threads=%d base_seed=%d record=%s mode=%s out=%s\n",
+                sh.n, sh.budget, threads, base_seed, rec, mode, sh.out_dir.c_str());
     std::fflush(stdout);
   }
 
@@ -329,5 +458,8 @@ int main(int argc, char** argv) {
     std::printf("\nN=%d: global_best=%.9f (no --record supplied; verify with "
                 "cpp/tools/verify_champion.py)\n",
                 sh.n, gb);
+  if (sh.instrumented())
+    std::printf("N=%d: distinct_basins=%ld spread=%s (the A/B coverage metric)\n", sh.n,
+                sh.distinct_basins(), sh.spread_mode ? "on" : "off");
   return 0;
 }

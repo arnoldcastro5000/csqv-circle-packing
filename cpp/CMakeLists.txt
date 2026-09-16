@@ -17,8 +17,9 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# -O3 only. Do NOT enable -ffast-math: the verifier relies on strict IEEE NaN/inf checks.
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+# -O3 plus -funroll-loops (measured ~+33% worker throughput, ticket 36; safe, no FP semantic
+# change). Do NOT enable -ffast-math: the verifier relies on strict IEEE NaN/inf checks.
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -funroll-loops")
 
 find_package(Threads REQUIRED)
 
@@ -28,6 +29,11 @@ target_link_libraries(csqv_worker PRIVATE Threads::Threads)
 
 add_executable(csqv_check csqv/check.cpp)
 target_include_directories(csqv_check PRIVATE csqv)
+
+# squeeze_check: the first-order center_polish_analytic squeeze audit and the analytic
+# baseline for the terminal second-order post-processor (ticket 45).
+add_executable(csqv_squeeze_check csqv/squeeze_check.cpp)
+target_include_directories(csqv_squeeze_check PRIVATE csqv)
 
 # Unit tests. io.hpp: atomic + monotonic champion save, no temp leak. report.hpp:
 # operator-supplied --record flag and advisory gap logic.
@@ -44,3 +50,14 @@ add_test(NAME csqv_report_test COMMAND csqv_report_test)
 add_executable(csqv_center_polish_test csqv/center_polish_test.cpp)
 target_include_directories(csqv_center_polish_test PRIVATE csqv)
 add_test(NAME csqv_center_polish_test COMMAND csqv_center_polish_test)
+
+# fingerprint.hpp::basin_fingerprint: the WL contact-graph basin hash (stable, D4-invariant,
+# discriminating). spread.hpp: the low-discrepancy seed spreading and defect kick. Both back the
+# basin-dedup + seed-spread worker (ticket 42 / ADR 0002).
+add_executable(csqv_fingerprint_test csqv/fingerprint_test.cpp)
+target_include_directories(csqv_fingerprint_test PRIVATE csqv)
+add_test(NAME csqv_fingerprint_test COMMAND csqv_fingerprint_test)
+
+add_executable(csqv_spread_test csqv/spread_test.cpp)
+target_include_directories(csqv_spread_test PRIVATE csqv)
+add_test(NAME csqv_spread_test COMMAND csqv_spread_test)

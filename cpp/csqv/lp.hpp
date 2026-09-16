@@ -25,9 +25,19 @@ namespace detail {
 // Bounded-variable primal simplex on the standard form  A z + s = rhs,  s >= 0.
 // Variables 0..k-1 are the structural radii; k..k+m-1 are the row slacks.
 // Returns the optimal z (size k).
+//
+// Optional DUALS for the envelope-theorem center gradient (ticket 40). When `pair_dual` is
+// non-null it is filled (size m) with the shadow price y_p >= 0 of each pair constraint:
+// y_p = d(optimal sum)/d(rhs_p), which for a max LP is minus the reduced cost of that row's
+// slack. When `struct_rc` is non-null it is filled (size k) with the reduced cost of each
+// structural radius; for a radius pinned at its upper bound u_i this is the wall shadow price
+// w_i = d(optimal sum)/d(u_i) >= 0, and it is ~0 for an interior (basic) radius. Both come
+// from the final optimal basis, so they are exact for the LP the caller passed.
 inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
                                             const std::vector<std::array<int, 2>>& pairs,
-                                            const std::vector<double>& rhs) {
+                                            const std::vector<double>& rhs,
+                                            std::vector<double>* pair_dual = nullptr,
+                                            std::vector<double>* struct_rc = nullptr) {
   const int m = static_cast<int>(pairs.size());
   const int N = k + m;
   const double INF = std::numeric_limits<double>::infinity();
@@ -176,6 +186,30 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
       z[i] = nonbasic_value(i);
     if (z[i] < 0.0) z[i] = 0.0;
     if (z[i] > u[i]) z[i] = u[i];
+  }
+
+  // Optimal-basis duals (ticket 40). Reduced cost of column j is cost_j - cost_B^T (B^-1 A)_j;
+  // the tableau row for a basic variable already holds B^-1 A, so this is a single dot product
+  // over the rows whose basic variable carries a non-zero objective (only the radii do).
+  if (pair_dual != nullptr || struct_rc != nullptr) {
+    auto rcost = [&](int j) {
+      double d = cost[j];
+      for (int p = 0; p < m; ++p) {
+        if (cost[basis[p]] != 0.0) d -= cost[basis[p]] * Tat(p, j);
+      }
+      return d;
+    };
+    if (pair_dual != nullptr) {
+      pair_dual->assign(m, 0.0);
+      for (int p = 0; p < m; ++p) {
+        double y = -rcost(k + p);  // shadow price of the pair row = -(slack reduced cost)
+        (*pair_dual)[p] = y > 0.0 ? y : 0.0;  // clamp tiny negatives from round-off
+      }
+    }
+    if (struct_rc != nullptr) {
+      struct_rc->assign(k, 0.0);
+      for (int i = 0; i < k; ++i) (*struct_rc)[i] = rcost(i);
+    }
   }
   return z;
 }

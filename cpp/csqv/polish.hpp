@@ -251,6 +251,153 @@ inline double center_polish(std::vector<double>& x, std::vector<double>& y,
   return sc;
 }
 
+// Subgradient of wall_slack(x, y) = min(x, SIDE-x, y, SIDE-y). It equals the unit vector that
+// points away from the single nearest wall (the wall that sets the containment radius). At a
+// tie (a corner, or the exact center line) it returns one valid subgradient; the monotone line
+// search in center_polish_analytic tolerates the arbitrary pick.
+inline void wall_grad(double x, double y, double& gx, double& gy) {
+  const double dl = x, dr = SIDE - x, db = y, dt = SIDE - y;
+  double m = dl;
+  gx = 1.0; gy = 0.0;               // nearest wall is left: raising x grows the slack
+  if (dr < m) { m = dr; gx = -1.0; gy = 0.0; }
+  if (db < m) { m = db; gx = 0.0; gy = 1.0; }
+  if (dt < m) { m = dt; gx = 0.0; gy = -1.0; }
+}
+
+// Analytic gradient of lp_score over the CENTERS, from the LP DUALS (ticket 40; research note
+// docs/research/phase-2-csqv-mathematical-levers.md). By the envelope (Danskin) theorem the
+// optimal-sum value function is differentiable in the constraint data where the optimal basis
+// is stable, and its center gradient assembles from the dual multipliers:
+//   grad_{c_i} f = sum_{tight pairs (i,j)} y_ij (c_i - c_j)/||c_i - c_j||  +  w_i grad wall_slack_i
+// where y_ij >= 0 is the pair shadow price and w_i >= 0 is the wall (upper-bound) shadow price.
+// This replaces the 4n LP solves of the finite-difference gradient with ONE dual LP solve.
+//
+// Fills gx, gy (size n) and returns the exact radii r for the given centers. At a degenerate
+// optimum the duals are non-unique and this returns one valid subgradient; the caller's
+// monotone line search keeps that safe.
+inline std::vector<double> center_gradient(const std::vector<double>& x, const std::vector<double>& y,
+                                           int n, std::vector<double>& gx, std::vector<double>& gy) {
+  gx.assign(n, 0.0);
+  gy.assign(n, 0.0);
+  std::vector<double> u(n);
+  for (int i = 0; i < n; ++i) u[i] = std::max(wall_slack(x[i], y[i]), 0.0);
+  std::vector<double> r = radii_lp(x, y, n);
+  if (n < 2) {
+    for (int i = 0; i < n; ++i) wall_grad(x[i], y[i], gx[i], gy[i]);  // radius = wall_slack
+    return r;
+  }
+
+  // Tight pairs at the converged radii (complementary slackness: only tight pairs carry a
+  // non-zero dual). radii_lp is strictly feasible to ~1e-12, so a real contact sits within a
+  // tiny band of d. Build the reduced LP over the involved circles and solve it once for duals.
+  const double tight_tol = 1e-7;
+  std::vector<int> local(n, -1), involved;
+  std::vector<std::array<int, 2>> apairs;
+  std::vector<double> arhs;
+  std::vector<std::array<int, 2>> tight_global;  // (gi, gj) aligned with apairs
+  for (int i = 0; i < n; ++i) {
+    for (int j = i + 1; j < n; ++j) {
+      const double dx = x[i] - x[j], dy = y[i] - y[j];
+      const double d = std::sqrt(dx * dx + dy * dy);
+      if (d >= u[i] + u[j]) continue;                 // cannot bind (same prune as radii_lp)
+      if (r[i] + r[j] < d - tight_tol) continue;      // slack: dual is zero
+      for (int side = 0; side < 2; ++side) {
+        const int g = side == 0 ? i : j;
+        if (local[g] < 0) { local[g] = static_cast<int>(involved.size()); involved.push_back(g); }
+      }
+      apairs.push_back({local[i], local[j]});
+      arhs.push_back(d);
+      tight_global.push_back({i, j});
+    }
+  }
+
+  std::vector<double> pair_dual, struct_rc;
+  if (!apairs.empty()) {
+    const int k = static_cast<int>(involved.size());
+    std::vector<double> ru(k);
+    for (int t = 0; t < k; ++t) ru[t] = u[involved[t]];
+    detail::solve_reduced_lp(k, ru, apairs, arhs, &pair_dual, &struct_rc);
+
+    // Pair term: y_ij pushes i and j apart along their contact direction.
+    for (size_t p = 0; p < apairs.size(); ++p) {
+      const int gi = tight_global[p][0], gj = tight_global[p][1];
+      const double dx = x[gi] - x[gj], dy = y[gi] - y[gj];
+      const double d = std::sqrt(dx * dx + dy * dy);
+      if (d < 1e-15) continue;
+      const double y = pair_dual[p];
+      const double ux = dx / d, uy = dy / d;
+      gx[gi] += y * ux; gy[gi] += y * uy;
+      gx[gj] -= y * ux; gy[gj] -= y * uy;
+    }
+  }
+
+  // Wall term. A circle at its containment bound (r_i == u_i) grows if it moves off its nearest
+  // wall; w_i is the shadow price of that bound. Involved circles read w_i from the structural
+  // reduced cost (0 for an interior, neighbour-pinned circle); a non-involved circle sits at
+  // r_i = u_i with the full weight 1 (no pair constrains it).
+  const double wall_bound_tol = 1e-7;
+  for (int i = 0; i < n; ++i) {
+    if (r[i] < u[i] - wall_bound_tol) continue;  // not wall-limited: no wall gradient
+    double w = 1.0;
+    if (local[i] >= 0) w = struct_rc[local[i]];
+    if (w <= 0.0) continue;
+    double wgx, wgy;
+    wall_grad(x[i], y[i], wgx, wgy);
+    gx[i] += w * wgx; gy[i] += w * wgy;
+  }
+  return r;
+}
+
+// center_polish using the analytic dual gradient (ticket 40). Same projected ascent and
+// MONOTONE backtracking line search as center_polish (accept only strict gains), but each
+// gradient is ONE dual LP solve instead of 4n finite-difference solves. The line search still
+// evaluates lp_score, so the accepted sum is exact and never decreases: safe before comparing
+// to the incumbent best. Updates x, y, r; returns the polished score.
+inline double center_polish_analytic(std::vector<double>& x, std::vector<double>& y,
+                                     std::vector<double>& r, int n, int max_iter = 300,
+                                     double step0 = 1e-4) {
+  double base = lp_score(x, y, n);
+  if (!std::isfinite(base)) {
+    r = radii_lp(x, y, n);
+    return base;
+  }
+  const double ftol = 1e-11;
+  const double step_max = 1e-2;
+  std::vector<double> gx(n), gy(n), tx(n), ty(n);
+  double step = step0;
+
+  for (int it = 0; it < max_iter; ++it) {
+    center_gradient(x, y, n, gx, gy);
+    double gnorm2 = 0.0;
+    for (int i = 0; i < n; ++i) gnorm2 += gx[i] * gx[i] + gy[i] * gy[i];
+    if (gnorm2 <= 0.0) break;
+    const double inv = 1.0 / std::sqrt(gnorm2);
+
+    bool improved = false;
+    double s = step;
+    for (int ls = 0; ls < 40; ++ls) {
+      for (int i = 0; i < n; ++i) {
+        tx[i] = std::min(std::max(x[i] + s * gx[i] * inv, 0.0), SIDE);
+        ty[i] = std::min(std::max(y[i] + s * gy[i] * inv, 0.0), SIDE);
+      }
+      const double f = lp_score(tx, ty, n);
+      if (f > base + ftol) {
+        x = tx; y = ty; base = f;
+        step = std::min(s * 2.0, step_max);
+        improved = true;
+        break;
+      }
+      s *= 0.5;
+    }
+    if (!improved) break;
+  }
+
+  r = radii_lp(x, y, n);
+  double sc;
+  if (!verify_and_score(x, y, r, n, TOL, sc)) return base;
+  return sc;
+}
+
 // Full scalable polish: continuation over rising lambda, then exact radii via radii_lp.
 // Returns the packing (unit frame) and its verifier score.
 inline double scalable_polish(std::vector<double>& x, std::vector<double>& y,
