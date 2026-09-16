@@ -11,15 +11,23 @@ best-known, each independently verified feasible at zero tolerance.
 
 ## Records in this repository
 
-| N   | sum of radii     | Packomania best-known              | status |
-|-----|------------------|------------------------------------|--------|
-| 118 | 5.724587011021   | 5.723940934671 (2026-09-16)        | **beats** the best-known by +0.0113% |
-| 119 | 5.749508688091   | 5.748642197922 (2026-09-14)        | **beats** the best-known by +0.0151% |
-| 120 | 5.774548479515   | 5.773179664810                     | **beats** the best-known by +0.0237% |
-| 121 | 5.799069987171   | 5.797468812113 (at submission)     | **accepted**; Packomania re-optimized and published 5.799103501951 |
-| 141 | 6.261881429857   | not published                      | feasible packing for an **untracked** N |
-| 142 | 6.289814405001   | not published                      | feasible packing for an **untracked** N |
-| 143 | 6.312963889026   | not published                      | feasible packing for an **untracked** N |
+Live best-known re-fetched 2026-09-16 (N=118, 119) and from the 2026-09-15 page
+(N=120, 121).
+
+| N   | our packing (sum) | Packomania live best-known               | status |
+|-----|-------------------|------------------------------------------|--------|
+| 118 | 5.724587011021    | 5.723940934671 (Tariq [20], 2026-09-16)  | **leads** live by +0.0113%; held, not submitted |
+| 119 | 5.749508688091    | 5.748642197923 (Tariq [20], 2026-09-16)  | **leads** live by +0.0151%; held, not submitted |
+| 120 | 5.774548479515    | 5.774582323763 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
+| 121 | 5.799069987171    | 5.799103501951 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
+| 141 | 6.261881429857    | not published                            | feasible packing for an **untracked** N |
+| 142 | 6.289814405001    | not published                            | feasible packing for an **untracked** N |
+| 143 | 6.312963889026    | not published                            | feasible packing for an **untracked** N |
+
+We currently lead the live record only on N=118 and N=119 (both held, not
+submitted). N=120 and N=121 were accepted and then re-optimized higher on the
+site (both credited to Castro [21]); the live values there now exceed our recorded
+packings, so they are no longer a lead.
 
 Records move daily. Re-fetch `https://www.packomania.com/csqv/txt/sumradii.txt` before
 trusting any comparison above.
@@ -35,6 +43,10 @@ Packomania practice. That finding motivated the `center_polish` stage described 
 
 `discoveries/2026-09-13-20-csqv-121/` is the submitted packing; `2026-09-14-00-csqv-121/`
 is the same centers with exactly-optimal (exact-LP) radii, 5.799074421369.
+
+N=120 followed the same pattern: our submission (5.774548479515) was accepted and
+then re-optimized higher on the site to 5.774582323763 (credited to Castro [21]).
+So both N=120 and N=121 currently show a live value above the packing recorded here.
 
 ## Honest provenance
 
