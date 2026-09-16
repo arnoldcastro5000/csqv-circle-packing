@@ -2,8 +2,11 @@
 """Independent .pck validator. Reads radii AS WRITTEN (no re-derivation).
 
 Centered frame: square [-0.5, 0.5]^2, center (0,0), side 1.
-Checks the artifact exactly as a submitter/maintainer would re-parse it.
-Pure numpy, no project imports: an ungameable second implementation.
+Checks the artifact exactly as a submitter/maintainer would re-parse it, at zero tolerance:
+geometry (no overlap, inside the box) PLUS Packomania format compliance (radii sorted
+increasing, line-1 max equals the actual max, filename N matches the row count, all radii
+positive and finite). Returns a nonzero exit code on any invalid file, so it is safe as a
+`validate && submit` guard. Pure numpy, no project imports: an ungameable second implementation.
 """
 import re
 import sys
@@ -11,11 +14,14 @@ import sys
 import numpy as np
 
 HALF = 0.5  # square is [-HALF, HALF]^2
+DECLARED_MAX_TOL = 1e-12  # line-1 max radius vs actual, at 15 dp emit precision
 
 
 def load_pck(path):
     with open(path) as fh:
         raw = fh.readlines()
+    if len(raw) < 2:
+        raise ValueError(f"{path}: not a .pck (need a max-radius line, an author line, then rows)")
     declared_max = float(raw[0].split()[0])
     author = raw[1].strip()
     rows = []
@@ -54,28 +60,40 @@ def validate(path):
     res["worst_wall"] = float(wall_viol.max())
     res["worst_wall_idx"] = int(np.argmax(wall_viol))
 
-    # overlap: worst pairwise violation (>0 means overlap)
+    # overlap: worst pairwise violation (>0 means overlap). N<2 has no pairs.
     i, j = np.triu_indices(n, k=1)
-    dx = x[i] - x[j]
-    dy = y[i] - y[j]
-    dist = np.sqrt(dx * dx + dy * dy)
-    ovl = (r[i] + r[j]) - dist
-    k = int(np.argmax(ovl))
-    res["worst_overlap"] = float(ovl.max())
-    res["worst_overlap_pair"] = (int(i[k]), int(j[k]))
+    if len(i):
+        dx = x[i] - x[j]
+        dy = y[i] - y[j]
+        dist = np.sqrt(dx * dx + dy * dy)
+        ovl = (r[i] + r[j]) - dist
+        k = int(np.argmax(ovl))
+        res["worst_overlap"] = float(ovl.max())
+        res["worst_overlap_pair"] = (int(i[k]), int(j[k]))
+    else:
+        res["worst_overlap"] = float("-inf")
+        res["worst_overlap_pair"] = (-1, -1)
 
     res["sum_radii"] = float(r.sum())
     res["feasible"] = (res["worst_wall"] <= 0.0) and (res["worst_overlap"] <= 0.0)
+
+    # The submission gate: geometric feasibility PLUS Packomania format compliance. A file that
+    # is non-overlapping but unsorted, mis-declares its max radius, has a wrong N, or carries a
+    # non-positive/non-finite radius is still rejected by the maintainer, so it is not valid.
+    res["valid"] = bool(
+        res["feasible"] and res["all_finite"] and res["all_r_pos"]
+        and res["sorted_incr"] and res["N_ok"] and res["declared_max_diff"] <= DECLARED_MAX_TOL
+    )
     return res
 
 
-BEST_KNOWN = {}  # filled from cache by caller
-
-
-def main():
-    paths = sys.argv[1:]
+def main(argv=None):
+    """Validate each .pck path. Return 0 if all are valid, 1 otherwise (the submission gate)."""
+    paths = sys.argv[1:] if argv is None else list(argv)
+    all_valid = True
     for p in paths:
         r = validate(p)
+        all_valid = all_valid and r["valid"]
         print("=" * 78)
         print(f"FILE      {r['path']}")
         print(f"author    {r['author']!r}")
@@ -91,8 +109,9 @@ def main():
         print(f"OVERLAP   worst violation = {r['worst_overlap']:+.3e}  "
               f"pair {r['worst_overlap_pair']}  {'FEASIBLE' if r['worst_overlap']<=0 else 'VIOLATED'}")
         print(f"SUM       {r['sum_radii']:.15f}")
-        print(f"VERDICT   {'*** FEASIBLE at zero tolerance ***' if r['feasible'] else '!!! INFEASIBLE !!!'}")
+        print(f"VERDICT   {'*** VALID at zero tolerance ***' if r['valid'] else '!!! INVALID (see fields above) !!!'}")
+    return 0 if all_valid else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
