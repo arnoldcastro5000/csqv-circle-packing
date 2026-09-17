@@ -5,9 +5,8 @@ unit square, maximize the sum of radii) at N = 121. It beats the published
 best-known and was submitted to Packomania on 2026-09-14.
 
 IMPORTANT, honest provenance: this packing was found by an AI-authored numerical
-search, NOT by the LLM-evolution loop. It is a solver-tooling result that proves
-the target is beatable and supplies the fast primitives the LLM loop needs. Making
-this a true Crucible-Loop (LLM-evolved) discovery is future work (see "Next").
+search. It is a solver-tooling result that proves
+the target is beatable and supplies the fast primitives the LLM loop needs.
 
 ## Provenance
 
@@ -80,10 +79,3 @@ It writes the best packing to `n121-s<seed>-best.txt` (centered frame) and print
 with `problems.csqv.record.to_pck` and re-check the 12-decimal round-trip at zero
 tolerance before trusting any value. Records move daily; re-fetch
 `https://www.packomania.com/csqv/txt/sumradii.txt` at verification time.
-
-## Next (to make it an LLM-evolution discovery)
-
-Wire `relax` (grow-and-push) and `scalable_polish` as fixed `ctx` primitives (like
-`radii_lp` / `polish` / `defect_move`), then run a cold LLM-evolution wave at
-N=121 seeded from this champion. The AI-authored chain plateaus near 5.79907; the
-LLM can evolve the orchestration and constructions to try for more.

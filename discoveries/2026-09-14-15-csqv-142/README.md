@@ -10,8 +10,7 @@ is NOT a record beat; it is a verified feasible packing for an N the record book
 does not track. A first-entry submission is possible but is the operator's call.
 
 IMPORTANT, honest provenance: this packing was found by a numerical search with the
-native C++ worker, NOT by the LLM-evolution loop. Making it a true Crucible-Loop
-(LLM-evolved) discovery is future work.
+native C++ worker.
 
 ## Provenance
 

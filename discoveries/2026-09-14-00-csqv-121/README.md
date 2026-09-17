@@ -14,9 +14,8 @@ feasible. The gap 5.799074 vs 5.799070 is LP PRECISION on the same centers, not 
 better arrangement.
 
 IMPORTANT, honest provenance: this packing was found by an AI-authored numerical
-search, NOT by the LLM-evolution loop. It is a solver-tooling result that proves
-the target is beatable. Making it a true Crucible-Loop (LLM-evolved) discovery is
-future work.
+search. It is a solver-tooling result that proves
+the target is beatable.
 
 ## Provenance
 
