@@ -11,11 +11,12 @@ best-known, each independently verified feasible at zero tolerance.
 
 ## Records in this repository
 
-Live best-known re-fetched 2026-09-16 (N=94, 95, 96, 97, 98, 118, 119) and from the
+Live best-known re-fetched 2026-09-16 (N=93, 94, 95, 96, 97, 98, 118, 119) and from the
 2026-09-15 page (N=120, 121).
 
 | N   | our packing (sum) | Packomania live best-known               | status |
 |-----|-------------------|------------------------------------------|--------|
+| 93  | 5.073447923447    | 5.071029091028 (Dutton [10], 2026-09-16) | **leads** live by +0.0477%; SEALED (jammed, ticket 47), held, not submitted |
 | 94  | 5.100695331105    | 5.098748716187 (Dutton [10], 2026-09-16) | **leads** live by +0.0382%; SEALED (jammed, ticket 47), held, not submitted |
 | 95  | 5.126321536373    | 5.125823937617 (Specht [2], 2026-09-16)  | **leads** live by +0.0097%; SEALED (jammed, ticket 47), held, not submitted |
 | 96  | 5.153337299999    | 5.152146722729 (Dutton [10], 2026-09-16) | **leads** live by +0.0231%; SEALED (jammed, ticket 47), held, not submitted |
@@ -29,11 +30,13 @@ Live best-known re-fetched 2026-09-16 (N=94, 95, 96, 97, 98, 118, 119) and from 
 | 142 | 6.289814405001    | 6.289851836935 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.7e-5), so live now exceeds our recorded value |
 | 143 | 6.312963889026    | 6.312993919570 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.0e-5), so live now exceeds our recorded value |
 
-We currently lead the live record on N=96, N=97, N=98 and N=118 (all held, not
-submitted, now SEALED at their jammed values by the ticket-47 jamming optimizer);
-N=98 has the largest margin. N=96 and N=97 came from the spread-vs-count sweep,
-`--count` mode, which beat `--spread` on both coverage and champion value at
-those N; the live best-known there is held by Everett Dutton [10]. N=119 was submitted and accepted 2026-09-16 (credited to
+We currently lead the live record on N=93, N=94, N=95, N=96, N=97, N=98 and N=118
+(all held, not submitted, now SEALED at their jammed values by the ticket-47 jamming
+optimizer); N=98 has the largest margin. N=93 through N=97 came from the
+spread-vs-count sweep, `--count` mode, which beat `--spread` on champion value at
+every N from 97 down to 93 (spread led on coverage, i.e. distinct basins, but count
+found the better basin); the live best-known there is held by Everett Dutton [10],
+except N=95 (Specht [2]). N=119 was submitted and accepted 2026-09-16 (credited to
 Castro [21]); the site then re-optimized it higher (+1.0e-5), and our jamming
 optimizer independently reaches that same re-optimized value to the float floor,
 confirming the site's re-optimizer is the same-basin jamming squeeze. Every N we
