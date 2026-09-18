@@ -5,8 +5,8 @@ circles of **variable radii** into a unit square with no overlap, maximizing the
 the radii**. This is the "circles in a square, variable radii" (csqv) entry in E. Specht's
 [Packomania](https://www.packomania.com/) record book.
 
-The solver is coded by Claude Opus 4.8 (the native C++ worker) and human-directed. It proves 
-the targets are beatable and are offered as verified feasible packings. Each discovery folder 
+The solver is coded by Claude Code Opus 4.8 (the native C++ worker) and human-directed. It proves 
+some targets are beatable and are offered as verified feasible packings. Each discovery folder 
 carries its own `README.md` with the exact provenance.
 
 The solver is a self-contained C++17 worker (no dependencies, no network at build time).
