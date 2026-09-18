@@ -92,7 +92,7 @@ strict IEEE NaN/inf handling.
 ## Run
 
 ```sh
-# csqv_worker <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp] [--record <live_sum>]
+# csqv_worker <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp] [--record <live_sum>] [--no-squeeze]
 cpp/build/csqv_worker 121 3600 0 12 results-cpp "Arnold Castro" 15 --record 5.797468812113
 ```
 
@@ -124,6 +124,17 @@ cpp/build/csqv_worker 121 3600 0 12 results-cpp "Arnold Castro" 15 --record 5.79
   To seed a fresh search from a known champion, copy it into `n<N>-s<seed>-best.txt` first.
 - A cross of the live record prints `*** RECORD BEATEN ***`. Confirm the emitted `.pck`
   with `tools/validate_pck.py` before believing it.
+
+## Terminal jamming seal (built into the worker, native, no dependencies)
+
+At the end of a run the worker runs `jam_slp` (`cpp/csqv/jam_slp.hpp`) ONCE on the single
+global best: a trust-region SLP over the Donev flex LP (on the general LP in
+`cpp/csqv/general_lp.hpp`) that drives the packing to its jammed optimum. It prints the
+pre-squeeze best, then the sealed value and the delta, writes the SEALED packing to the
+`.pck` (the submittable artifact) and to `n<N>-sealed.txt`, and leaves the raw
+`n<N>-best.txt` as the search's own champion. It is monotone (keep-better) and needs no
+Python. Pass `--no-squeeze` to skip it. See ADR 0003 for why only the jamming stage is
+ported to C++.
 
 ## Terminal second-order squeeze (optional, needs NumPy + SciPy)
 

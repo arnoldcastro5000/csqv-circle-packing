@@ -9,9 +9,16 @@
 //
 // The trusted Python verifier stays the source of truth: re-check any champion with
 //   PYTHONPATH=. python3 cpp/tools/verify_champion.py <this-worker-output.txt>
+// for the trusted-frame score, and validate the emitted file as written with
+//   python3 cpp/tools/validate_pck.py <this-worker-output.pck>
 // before treating it as a record or submitting it.
 //
-// Usage: csqv_worker <n> <budget_s> <base_seed> [threads] [out_dir]
+// At the end of a run it prints the pre-squeeze best, runs a one-shot terminal jamming seal
+// (jam_slp) on the single global best, writes the sealed packing to the .pck and n<N>-sealed.txt,
+// and prints the final sealed value. Pass --no-squeeze to skip the seal.
+//
+// Usage: csqv_worker <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp]
+//        [--record <live_sum>] [--no-squeeze]
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -33,6 +40,7 @@
 #include "fingerprint.hpp"
 #include "geometry.hpp"
 #include "io.hpp"
+#include "jam_slp.hpp"
 #include "lp.hpp"
 #include "polish.hpp"
 #include "report.hpp"
@@ -161,6 +169,14 @@ struct Shared {
   std::atomic<double> global_best{-1.0};
   std::mutex best_mtx;  // serializes the global-best file write within this process
 
+  // The unit-frame centers of the current global best, captured on each winning publish (under
+  // best_mtx). The end-of-run terminal jamming squeeze (ticket 03) runs ONCE on these, after all
+  // threads join, so it seals the single best packing rather than every per-thread champion.
+  bool has_global = false;
+  int gb_seed = -1;
+  std::vector<double> gb_x, gb_y;  // radii are recomputed by jam_slp, so they are not stored
+  bool no_squeeze = false;  // --no-squeeze: skip the terminal jamming seal (A/B and speed tests)
+
   // Basin-dedup + seed-spread mode (ticket 42 / ADR 0002). spread_mode = the new behavior (spread
   // seeds + seeds-only dedup gate + escape + basin counting). count_mode = basin COUNTING ONLY (no
   // spread, no gate, no escape); it exists so the A/B can instrument the current search as a fair
@@ -205,6 +221,11 @@ bool publish_global(Shared& sh, int seed, const std::vector<double>& x,
       save_champion(gpath, sh.n, seed, x, y, r, s)) {
     emit_pck(sh.out_dir + "/csqv" + std::to_string(sh.n) + ".pck", canon, sh.author, sh.pck_dp);
     if (s > sh.global_best.load()) sh.global_best.store(s);
+    // Snapshot the winning centers so the end-of-run terminal squeeze can seal them (ticket 03).
+    sh.gb_x = x;
+    sh.gb_y = y;
+    sh.gb_seed = seed;
+    sh.has_global = true;
     return true;
   }
   return false;
@@ -373,13 +394,16 @@ int main(int argc, char** argv) {
   // --spread turns on the basin-dedup + seed-spread path (ticket 42). --count turns on basin
   // COUNTING ONLY (the A/B control that instruments the current search without the gate/escape).
   // Absent both = the byte-identical production baseline. Parse and strip before the positionals.
-  bool spread_mode = false, count_mode = false;
+  bool spread_mode = false, count_mode = false, no_squeeze = false;
   for (auto it = args.begin(); it != args.end();) {
     if (*it == "--spread") {
       spread_mode = true;
       it = args.erase(it);
     } else if (*it == "--count") {
       count_mode = true;
+      it = args.erase(it);
+    } else if (*it == "--no-squeeze") {
+      no_squeeze = true;
       it = args.erase(it);
     } else {
       ++it;
@@ -388,7 +412,7 @@ int main(int argc, char** argv) {
   if (args.size() < 3) {
     std::fprintf(stderr,
                  "usage: %s <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp] "
-                 "[--record <live_sum>]\n",
+                 "[--record <live_sum>] [--no-squeeze]\n",
                  argv[0]);
     return 2;
   }
@@ -406,6 +430,7 @@ int main(int argc, char** argv) {
   sh.record = rec.value;  // no_record() when --record is absent/malformed; the search never uses it
   sh.spread_mode = spread_mode;
   sh.count_mode = count_mode;
+  sh.no_squeeze = no_squeeze;
   sh.base_seed = base_seed;
   sh.threads = threads;
   sh.t0 = Clock::now();
@@ -449,15 +474,68 @@ int main(int argc, char** argv) {
   for (int t = 0; t < threads; ++t) pool.emplace_back(worker_loop, std::ref(sh), base_seed + t);
   for (auto& th : pool) th.join();
 
+  // Pre-squeeze best: the value the search reached before the terminal seal.
+  const double pre = sh.global_best.load();
+  {
+    std::lock_guard<std::mutex> lk(g_io);
+    if (record_supplied(sh.record))
+      std::printf("\nN=%d: pre-squeeze best=%.12f record=%.9f gap=%+.5f%%\n", sh.n, pre, sh.record,
+                  csqv::gap_percent(sh.record, pre));
+    else
+      std::printf("\nN=%d: pre-squeeze best=%.12f\n", sh.n, pre);
+    std::fflush(stdout);
+  }
+
+  // Terminal jamming seal (ticket 03): run the SLP jammer ONCE on the global best, after the
+  // joins. The per-thread final step is only the first-order analytic polish; this drives the
+  // single best packing to its jammed optimum. It is monotone (keep-better), so it never
+  // regresses. The SEALED packing goes to the .pck (the submittable artifact) and to a new
+  // n<N>-sealed.txt; the raw n<N>-best.txt is left as the search's own champion. The
+  // Python verifier stays the source of truth: re-check the .pck before any submission.
+  double final_val = pre;
+  bool sealed = false;
+  if (!sh.no_squeeze && sh.has_global && sh.n >= 2) {
+    std::vector<double> gx, gy;
+    int gseed;
+    {
+      std::lock_guard<std::mutex> lk(sh.best_mtx);
+      gx = sh.gb_x;
+      gy = sh.gb_y;
+      gseed = sh.gb_seed;
+    }
+    const csqv::JamResult jr = csqv::jam_slp(gx, gy, sh.n);
+    if (jr.score > pre) {
+      csqv::Packing canon;
+      if (csqv::canonical_feasible(jr.x, jr.y, jr.r, sh.n, csqv::TOL, canon)) {
+        emit_pck(sh.out_dir + "/csqv" + std::to_string(sh.n) + ".pck", canon, sh.author, sh.pck_dp);
+        save_champion(sh.out_dir + "/n" + std::to_string(sh.n) + "-sealed.txt", sh.n, gseed, jr.x,
+                      jr.y, jr.r, jr.score);
+        sh.global_best.store(jr.score);
+        final_val = jr.score;
+        sealed = true;
+      }
+    }
+  }
+
   std::lock_guard<std::mutex> lk(g_io);
-  const double gb = sh.global_best.load();
-  if (record_supplied(sh.record))
-    std::printf("\nN=%d: global_best=%.9f record=%.9f gap=%+.5f%%\n", sh.n, gb, sh.record,
-                csqv::gap_percent(sh.record, gb));
+  if (sh.no_squeeze)
+    std::printf("N=%d: terminal squeeze SKIPPED (--no-squeeze)\n", sh.n);
+  else if (sealed)
+    std::printf("N=%d: terminal squeeze sealed %.12f -> %.12f (delta %+.3e); .pck + "
+                "n%d-sealed.txt updated\n",
+                sh.n, pre, final_val, final_val - pre, sh.n);
   else
-    std::printf("\nN=%d: global_best=%.9f (no --record supplied; verify with "
-                "cpp/tools/verify_champion.py)\n",
-                sh.n, gb);
+    std::printf("N=%d: terminal squeeze: no gain over %.12f (already jammed)\n", sh.n, pre);
+
+  if (record_supplied(sh.record)) {
+    const char* cross = beats_record(sh.record, final_val) ? "  *** RECORD BEATEN ***" : "";
+    std::printf("N=%d: final=%.9f record=%.9f gap=%+.5f%%%s\n", sh.n, final_val, sh.record,
+                csqv::gap_percent(sh.record, final_val), cross);
+  } else {
+    std::printf("N=%d: final=%.9f (no --record supplied; score with verify_champion.py, "
+                "validate the .pck with validate_pck.py)\n",
+                sh.n, final_val);
+  }
   if (sh.instrumented())
     std::printf("N=%d: distinct_basins=%ld spread=%s (the A/B coverage metric)\n", sh.n,
                 sh.distinct_basins(), sh.spread_mode ? "on" : "off");

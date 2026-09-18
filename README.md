@@ -84,10 +84,17 @@ same gap the Packomania re-optimization closed on N=121. An optional `--spread` 
 cross-thread basin de-duplication and low-discrepancy seed spreading (ADR 0002). See
 [`cpp/README.md`](cpp/README.md) for the full method, build, and run instructions.
 
-For a finished champion there is an optional **terminal second-order squeeze**
-(`problems/csqv/terminal_squeeze.py`, NumPy + SciPy): a full-space sparse NLP over (x, y, r)
-plus a guarded contact-graph KKT-Newton, run once on the single best packing. It is not part of
-the self-contained C++ worker. See `cpp/README.md` for the scope and limits.
+At the end of a run the worker runs a **native terminal jamming seal** once on the single
+best packing: a trust-region SLP over the Donev flex LP (`cpp/csqv/jam_slp.hpp`, on the
+general LP in `cpp/csqv/general_lp.hpp`) that drives the packing to its jammed optimum. It
+then writes the **sealed** packing to the `.pck` (the submittable artifact) and to
+`n<N>-sealed.txt`, leaving the raw `n<N>-best.txt` as the search's own champion. It is
+monotone (keep-better) and needs no Python. Pass `--no-squeeze` to skip it.
+
+The Python **second-order NLP** squeeze (`problems/csqv/terminal_squeeze.py`, NumPy + SciPy)
+stays as a reference and is intentionally not ported: on real champions the jamming SLP
+reaches the sealed value while the NLP plateaus at ~75% of the gap (ADR 0003). See
+`cpp/README.md` for the scope and limits.
 
 Key idea: for **fixed centers**, the optimal radii are the solution of a linear program
 (cheap and exact at any N). All the difficulty is in the **center arrangement**, so the
@@ -104,13 +111,16 @@ make -C cpp
 ### Run
 
 ```sh
-# csqv_worker <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp] [--record <live_sum>]
+# csqv_worker <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp] \
+#             [--record <live_sum>] [--no-squeeze]
 cpp/build/csqv_worker 121 3600 0 8 results-cpp "Your Name" 15 --record 5.797468812113
 ```
 
 The worker writes the best centers and a ready-to-submit `.pck` into `out_dir`, resumes
-from a saved champion on relaunch, and never regresses a saved file. `--record` is advisory
-only (a console gap and banner); the search never uses it.
+from a saved champion on relaunch, and never regresses a saved file. At the end of a run it
+prints the pre-squeeze best, runs the terminal jamming seal, writes the sealed `.pck` and
+`n<N>-sealed.txt`, then prints the final sealed value. `--no-squeeze` skips the seal.
+`--record` is advisory only (a console gap and banner); the search never uses it.
 
 ## Verifying a packing
 
