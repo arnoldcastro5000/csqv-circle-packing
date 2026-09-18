@@ -35,21 +35,9 @@ Live best-known re-fetched 2026-09-16 (N=93, 94, 95, 96, 97, 98, 99, 118, 119) a
 | 142 | 6.289814405001    | 6.289851836935 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.7e-5), so live now exceeds our recorded value |
 | 143 | 6.312963889026    | 6.312993919570 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.0e-5), so live now exceeds our recorded value |
 
-We currently lead the live record on N=93, N=94, N=95, N=96, N=97, N=98, N=99 and
-N=118 (all held, not submitted, now SEALED at their jammed values by the jamming optimizer); N=98 has the largest margin. N=93 through N=97 came from the
-spread-vs-count sweep, `--count` mode, which beat `--spread` on champion value at
-every N from 97 down to 93 (spread led on coverage, i.e. distinct basins, but count
-found the better basin); the live best-known there is held by Everett Dutton [10],
-except N=95 (Specht [2]). N=99 came from the high-N sweep (N=99..110), also
-`--count`, the only mode to beat live there (spread led on basins but its best basin
-fell short); the live best-known there is held by Byron Tasseff [13]. N=119 was submitted and accepted 2026-09-16 (credited to
-Castro [21]); the site then re-optimized it higher (+1.0e-5), and our jamming
-optimizer independently reaches that same re-optimized value to the float floor,
-confirming the site's re-optimizer is the same-basin jamming squeeze. Every N we
-submitted (119, 120, 121, 141, 142, 143) was accepted and then re-optimized
-higher on the site (all credited to Castro [21]). N=141-143, previously
-untracked, are now published (introduced 14-Sep-2026); none is marked
-proven-optimal.
+Every N we submitted (119, 120, 121, 141, 142, 143) was accepted and then re-optimized
+higher on the site (all credited to Castro [21]). N=141-143, previously untracked, are now 
+published (introduced 14-Sep-2026); none is marked proven-optimal.
 
 Records move daily. Re-fetch `https://www.packomania.com/csqv/txt/sumradii.txt` before
 trusting any comparison above.
