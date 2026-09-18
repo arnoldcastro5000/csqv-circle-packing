@@ -1,6 +1,6 @@
 # Basin dedup gates the seeds only, never the depth
 
-The basin-dedup worker (tickets 41, 42) shares a [[Basin fingerprint]] across the worker threads
+The basin-dedup worker shares a [[Basin fingerprint]] across the worker threads
 so they cover unique basins. This ADR fixes WHERE the fingerprint acts: it gates the SEEDS (the
 fresh cold constructions) and never the perturbation depth inside a basin.
 
@@ -26,10 +26,10 @@ not coverage, are the goal, and depth is where records come from. Coverage is on
 The evidence for the shared-hash dedup itself lifting P(record basin)/budget over an
 already-diverse multistart is thin for this objective, so the fingerprint is a cheap add-on on top
 of the well-supported core (Sobol [[Seed spreading]] + protected depth), and the full build is
-gated on an empirical A/B (ticket 42 acceptance).
+gated on an empirical A/B acceptance.
 
 ## Status
 
 Accepted. Design decision for the basin-dedup worker; the verifier and the fixed-primitive
-contract (ADR 0001) are unchanged. The build is [ticket 43](../../.scratch/csqv/issues/43-build-basin-dedup-seed-spread-worker.md).
+contract (ADR 0001) are unchanged. The build is the basin-dedup/seed-spread worker.
 Revisit if the A/B shows coverage dedup trades away depth even under the seeds-only gate.

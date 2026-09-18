@@ -1,13 +1,12 @@
 # Phase 2 CSQV: how to execute cross-thread basin deduplication (N<=100)
 
-Research date: 2026-09-15. This note answers [ticket 41](../../.scratch/csqv/issues/41-cross-thread-basin-deduplication.md).
-It feeds the GO/NO-GO decision and spec in [ticket 42](../../.scratch/csqv/issues/42-basin-worker-go-no-go-and-spec.md).
-It does not resolve ticket 42.
+Research date: 2026-09-15. This note studies how to execute cross-thread basin deduplication.
+It feeds the GO/NO-GO decision and spec for the basin-dedup worker.
+It does not resolve that decision.
 
-Read first for context: the basin definition in [CONTEXT.md](../../CONTEXT.md) (terms Basin,
+Read first for context: the basin definition in the project glossary (terms Basin,
 Defect-migration, Multi-start), the current worker
-[cpp/csqv/worker.cpp](../../cpp/csqv/worker.cpp), and the record-methods note
-[phase-2-csqv-record-methods-and-target-selection.md](phase-2-csqv-record-methods-and-target-selection.md).
+[cpp/csqv/worker.cpp](../../cpp/csqv/worker.cpp).
 
 CSQV packs N variable-radius circles in a unit square. The objective maximizes the sum of the
 radii. For fixed centers the optimal radii solve an exact LP. A local search reaches only its
@@ -38,8 +37,8 @@ FINGERPRINT so a thread can skip a basin another thread already found.
 that differ by the solver tolerance (this worker converges contacts to about 1e-9 to 1e-12; the
 verifier margins are overlap 1.9e-12 and boundary 2.8e-17, per the map). Any hash of the float
 coordinates then differs on every run, so every run looks distinct and the dedup gate never fires.
-CONTEXT.md already fixes the correct rule: "Two searches reach the SAME basin when their converged
-contact graphs match, not when their float coordinates match" ([CONTEXT.md](../../CONTEXT.md), term
+The project glossary already fixes the correct rule: "Two searches reach the SAME basin when their converged
+contact graphs match, not when their float coordinates match" (the project glossary, term
 Basin). So the fingerprint must be COMBINATORIAL.
 
 **Contact graph (recommended).** Read the converged packing. Add an edge (i, j) when
@@ -115,7 +114,7 @@ audit-friendly) unless a fixed memory ceiling is wanted, in which case a Bloom f
 
 ## 3. The dedup gate: gate SEEDS ONLY, protect depth
 
-The literature splits cleanly along the coverage-vs-depth line the ticket names.
+The literature splits cleanly along the coverage-vs-depth line at issue here.
 
 **Dedup the SEEDS (coverage side).** Multi-Level Single Linkage (MLSL) is the canonical
 seed-dedup method. It clusters sampled points into regions of attraction and starts ONE local
@@ -148,8 +147,7 @@ optimization by basin-hopping...", [J. Phys. Chem. A 101 (1997) 5111-5116, DOI 1
 open [ORA copy](https://ora.ox.ac.uk/objects/uuid:6a36a972-20a7-4173-9943-f90f45c37a2c)). The whole
 value of Monotonic Basin Hopping is the perturbation WALK inside and around a promising basin. If
 the gate drops a perturbation neighbour the instant its fingerprint is "seen," it kills the funnel
-walk that produces the record. Coverage rises and P(record basin) falls, the exact failure the
-ticket warns of.
+walk that produces the record. Coverage rises and P(record basin) falls, the exact failure to avoid.
 
 **Recommendation (3).** Gate SEEDS ONLY. Fingerprint each converged optimum and record it. Before
 a thread commits to a fresh cold CONSTRUCTION, skip and redraw if that construction's basin is
@@ -203,7 +201,7 @@ own evidence qualifies "perturb": a SMALL center perturbation collapses back to 
 (the map records N=60 and N=90 warm walks re-deriving the incumbent). To hop to an ADJACENT UNSEEN
 basin you must change the contact graph, which is exactly what `defect_move` does (remove the k
 weakest circles, reinsert into the largest holes; it "changes the combinatorial contact graph, so
-it can reach a basin the perturbation walk never visits", [CONTEXT.md](../../CONTEXT.md), term
+it can reach a basin the perturbation walk never visits", the project glossary, term
 Defect-migration). PBH already carries this pattern as a large-jump escape when the walk stalls.
 
 **Recommendation (5).** On a hit, first HOP: apply a large kick (`defect_move` or a large-scale
@@ -212,7 +210,7 @@ landing in seen basins after a small bounded number of tries, fall back to a fre
 cold) construction. This is basin-hopping-with-restart, the standard PBH escape, and it reuses the
 worker's existing `defect_move` primitive.
 
-## Synthesis for ticket 42
+## Synthesis for the GO/NO-GO decision and spec
 
 - Fingerprint: canonical hash of the node-colored contact graph at `tol ~ 1e-6`; radii-vector as an
   optional pre-screen; never raw floats.
@@ -224,7 +222,7 @@ worker's existing `defect_move` primitive.
   multistart; THIN for an exact shared-hash dedup lifting P(record)/budget specifically. Coverage
   is a proxy only.
 
-**One-line GO/NO-GO input (ticket 42 decides).** The evidence points to a QUALIFIED GO: build the
+**One-line GO/NO-GO input.** The evidence points to a QUALIFIED GO: build the
 SEEDS-ONLY dedup worker (contact-graph fingerprint, single-lock shared set, escape by
 `defect_move`, depth protected), but GATE the full build on an empirical P(record basin)/budget A/B
 against the current independent-parallel worker at a known-hard N<=100, because the marginal gain

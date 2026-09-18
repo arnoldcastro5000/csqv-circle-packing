@@ -11,6 +11,8 @@ results-cpp/
 # Python
 __pycache__/
 *.pyc
+.mypy_cache/
+.pytest_cache/
 
 # OS
 .DS_Store

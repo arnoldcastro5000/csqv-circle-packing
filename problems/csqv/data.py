@@ -1,15 +1,12 @@
 """CSQV data layer: Packomania best-known values, coordinate anchors, and the
 reference cross-check that locks the acceptance convention.
 
-This module anchors the Phase-2b CSQV problem (wayfinder ticket "Anchor the CSQV
-data, best-known values, and acceptance tolerance"). It does NOT build the problem
-module; that is a separate ticket. It provides the parts a later verifier and
-scorer reuse:
+This module provides the shared data parts the verifier and scorer reuse:
 
   - the best-known sum-of-radii values (Packomania, complete to N=100),
   - a loader for the anchor coordinate files,
   - the frame convention (the centered side-1 square the files use, versus the unit
-    square the genome and verifier use),
+    square the solver and verifier use),
   - a reference verifier that recomputes containment, non-overlap, and the sum.
 
 Convention (pinned from the Packomania coordinate files, fetched 2026-09-12; see
@@ -18,9 +15,8 @@ data/README.md):
   - Storage frame: centered origin, the square [-0.5, 0.5] x [-0.5, 0.5], side 1. A
     boundary circle satisfies abs(x) + r = 0.5 exactly (for example csqv26 circle
     4: 0.415360499304 + 0.084639500696 = 0.5).
-  - Genome and verifier frame (CONTEXT.md, ticket "Lock the CSQV genome, verifier,
-    and fixed-primitive contract"): the unit square [0, 1] x [0, 1]. Convert by
-    adding 0.5 to x and y; the radius does not change.
+  - Solver and verifier frame: the unit square [0, 1] x [0, 1]. Convert by adding
+    0.5 to x and y; the radius does not change.
   - Values and coordinates carry 12 decimals.
   - Acceptance tolerance TOL: a packing is feasible when its worst boundary
     violation and its worst pairwise overlap are both at most TOL. The stored
@@ -175,8 +171,8 @@ def verify(packing_unit: Array, side: float = SIDE, tol: float = TOL) -> VerifyR
     The packing is feasible when its worst containment violation and its worst
     pairwise overlap are both at most `tol`. This is the reference check the later
     verifier reuses; it trusts nothing about how the packing was produced. A
-    non-finite coordinate or radius is never feasible; an evolved genome that emits
-    NaN or inf is rejected, not silently accepted.
+    non-finite coordinate or radius is never feasible; a packing that carries NaN or
+    inf is rejected, not silently accepted.
     """
     n = int(packing_unit.shape[0])
     if not np.isfinite(packing_unit).all():

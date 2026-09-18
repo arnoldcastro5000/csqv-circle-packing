@@ -12,19 +12,19 @@ best-known, each independently verified feasible at zero tolerance.
 ## Records in this repository
 
 Live best-known re-fetched 2026-09-16 (N=93, 94, 95, 96, 97, 98, 99, 118, 119) and from the
-2026-09-15 page (N=120, 121).
+2026-09-15 page (N=120, 121, 141, 142, 143).
 
 | N   | our packing (sum) | Packomania live best-known               | status |
 |-----|-------------------|------------------------------------------|--------|
-| 93  | 5.073447923447    | 5.071029091028 (Dutton [10], 2026-09-16) | **leads** live by +0.0477%; SEALED (jammed, ticket 47), held, not submitted |
-| 94  | 5.100695331105    | 5.098748716187 (Dutton [10], 2026-09-16) | **leads** live by +0.0382%; SEALED (jammed, ticket 47), held, not submitted |
-| 95  | 5.126321536373    | 5.125823937617 (Specht [2], 2026-09-16)  | **leads** live by +0.0097%; SEALED (jammed, ticket 47), held, not submitted |
-| 96  | 5.153337299999    | 5.152146722729 (Dutton [10], 2026-09-16) | **leads** live by +0.0231%; SEALED (jammed, ticket 47), held, not submitted |
-| 97  | 5.180768365834    | 5.180639279285 (Dutton [10], 2026-09-16) | **leads** live by +0.0025%; SEALED (jammed, ticket 47), held, not submitted |
-| 98  | 5.208554826179    | 5.206668546480 (Garg [18], 2026-09-16)   | **leads** live by +0.0362%; SEALED (jammed, ticket 47), held, not submitted |
-| 99  | 5.234274484443    | 5.233333680412 (Tasseff [13], 2026-09-16)| **leads** live by +0.0180%; SEALED (jammed, ticket 47), held, not submitted |
-| 118 | 5.724613195610    | 5.723940934671 (Tariq [20], 2026-09-16)  | **leads** live by +0.0117%; SEALED (jammed, ticket 47), held, not submitted |
-| 119 | 5.749508785837    | 5.749519103944 (Castro [21], 2026-09-16) | submitted + accepted 2026-09-16; site re-optimized higher (+1.0e-5) to a value our jamming optimizer (ticket 47) independently reaches (5.749519103949) |
+| 93  | 5.073447923447    | 5.071029091028 (Dutton [10], 2026-09-16) | **leads** live by +0.0477%; SEALED (jammed), held, not submitted |
+| 94  | 5.100695331105    | 5.098748716187 (Dutton [10], 2026-09-16) | **leads** live by +0.0382%; SEALED (jammed), held, not submitted |
+| 95  | 5.126321536373    | 5.125823937617 (Specht [2], 2026-09-16)  | **leads** live by +0.0097%; SEALED (jammed), held, not submitted |
+| 96  | 5.153337299999    | 5.152146722729 (Dutton [10], 2026-09-16) | **leads** live by +0.0231%; SEALED (jammed), held, not submitted |
+| 97  | 5.180768365834    | 5.180639279285 (Dutton [10], 2026-09-16) | **leads** live by +0.0025%; SEALED (jammed), held, not submitted |
+| 98  | 5.208554826179    | 5.206668546480 (Garg [18], 2026-09-16)   | **leads** live by +0.0362%; SEALED (jammed), held, not submitted |
+| 99  | 5.234274484443    | 5.233333680412 (Tasseff [13], 2026-09-16)| **leads** live by +0.0180%; SEALED (jammed), held, not submitted |
+| 118 | 5.724613195610    | 5.723940934671 (Tariq [20], 2026-09-16)  | **leads** live by +0.0117%; SEALED (jammed), held, not submitted |
+| 119 | 5.749508785837    | 5.749519103944 (Castro [21], 2026-09-16) | submitted + accepted 2026-09-16; site re-optimized higher (+1.0e-5) to a value our jamming optimizer independently reaches (5.749519103949) |
 | 120 | 5.774548479515    | 5.774582323763 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
 | 121 | 5.799069987171    | 5.799103501951 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.4e-5), so live now exceeds our recorded value |
 | 141 | 6.261881429857    | 6.261919395210 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.8e-5), so live now exceeds our recorded value |
@@ -32,8 +32,7 @@ Live best-known re-fetched 2026-09-16 (N=93, 94, 95, 96, 97, 98, 99, 118, 119) a
 | 143 | 6.312963889026    | 6.312993919570 (Castro [21], 2026-09-15) | submitted + accepted; site re-optimized higher (+3.0e-5), so live now exceeds our recorded value |
 
 We currently lead the live record on N=93, N=94, N=95, N=96, N=97, N=98, N=99 and
-N=118 (all held, not submitted, now SEALED at their jammed values by the ticket-47
-jamming optimizer); N=98 has the largest margin. N=93 through N=97 came from the
+N=118 (all held, not submitted, now SEALED at their jammed values by the jamming optimizer); N=98 has the largest margin. N=93 through N=97 came from the
 spread-vs-count sweep, `--count` mode, which beat `--spread` on champion value at
 every N from 97 down to 93 (spread led on coverage, i.e. distinct basins, but count
 found the better basin); the live best-known there is held by Everett Dutton [10],

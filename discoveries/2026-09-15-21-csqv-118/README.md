@@ -14,7 +14,7 @@ the target is beatable.
 |---|---|
 | result files | `csqv118.pck` (15 dp, strictly feasible, SEALED at its jammed value), `n118-sealed.txt` (the jammed centers, the `.pck` source), `n118-best.txt` (the pre-seal worker centers) |
 | centers found by | the native C++ cold multi-start worker (`cpp/csqv/worker.cpp`, `search.hpp`), base_seed 2, thread seed 2, no LLM |
-| radii + `.pck` by | the exact-LP radii + rounding-aware feasibility shrink (`tools/emit_pck.py`, the parse-back safety loop) |
+| radii + `.pck` by | the exact-LP radii + rounding-aware feasibility shrink (the parse-back safety loop) |
 | terminal squeeze | SEALED 2026-09-16: the first-order-squeezed champion was NOT jammed (Donev margin 9.9), so the jamming optimizer (`jam_slp`, a trust-region sequential-LP flex ascent) drove it to its same-basin jammed optimum (margin 0), a +3.20e-5 gain, then the `.pck` was emitted + zero-tol validated |
 | repo commit (code base) | branch `feat/csqv-analytic-dual-gradient`, base 8c11af7 |
 | primitives used | exact radii-by-LP for fixed centers; independent verifier recomputes containment, overlap, and the sum |

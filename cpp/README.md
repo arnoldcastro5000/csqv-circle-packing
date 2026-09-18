@@ -51,7 +51,7 @@ LIVE best-known before any submission.
 
 > Note: this repository now vendors the trusted verifier primitives (`problems/csqv/`:
 > `radii_lp`, `verify_and_score`, `canonical_feasible`, `pairwise_distances`) so the terminal
-> squeeze below runs here. The monorepo's `verify_champion.py` and parity harness
+> squeeze below runs here. The original research repo's `verify_champion.py` and parity harness
 > (`make_golden.py`, `run_parity.py`, `cross_validate.py`) are still not included;
 > `tools/validate_pck.py` is the self-contained check for a finished `.pck`.
 
@@ -166,7 +166,7 @@ family since `sqrt` and the basic operations are IEEE-correctly-rounded and the 
 no `-ffast-math`). `check.cpp` (target `csqv_check`) reads unit-frame centers and prints
 `radii_lp` + `verify_and_score`, for spot checks against any reference solver.
 
-> The original research monorepo has a Python parity harness (`make_golden.py`,
+> The original research repo has a Python parity harness (`make_golden.py`,
 > `run_parity.py`, `cross_validate.py`) that diffs these primitives against the trusted
 > `problems/csqv/` oracle. It is not included here; this repository's self-contained check
 > is `tools/validate_pck.py` on a finished `.pck`.

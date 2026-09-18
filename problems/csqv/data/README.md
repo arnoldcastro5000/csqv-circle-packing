@@ -1,10 +1,9 @@
 # CSQV data (Packomania), provenance and convention
 
-This directory anchors the Phase-2b CSQV problem: variable-radii circles packed in
+This directory holds the CSQV problem data: variable-radii circles packed in
 a square of side 1, maximizing the sum of radii. It holds the best-known values, a
 set of anchor coordinate files, and the pinned acceptance convention. The loader,
 the frame conversion, and the reference verifier live in `problems/csqv/data.py`.
-Tests are in `tests/test_csqv_data.py`.
 
 ## Source
 
@@ -24,9 +23,7 @@ Tests are in `tests/test_csqv_data.py`.
   {13, 20, 26, 32, 40, 50, 60, 75, 90, 100}, spanning the less-contested mid band.
   Source: https://www.packomania.com/csqv/txt/csqvN.txt
 
-The stored anchor set is a sample for the cross-check, not the final target band.
-The target band is chosen in the wayfinder ticket "Lock the CSQV fitness, baseline,
-and N-band plus staleness protocol".
+The stored anchor set is a sample for the cross-check, not a final target band.
 
 ## Coordinate format
 
@@ -38,9 +35,8 @@ rows `index x y r`, then a footer `sumradii = <value>`. Values carry 12 decimals
 - Storage frame: centered origin, the square [-0.5, 0.5] x [-0.5, 0.5], side 1. A
   boundary circle satisfies `abs(x) + r = 0.5` exactly (for example `csqv26`
   circle 4: `0.415360499304 + 0.084639500696 = 0.5`).
-- Genome and verifier frame (see the repo `CONTEXT.md` and the ticket "Lock the
-  CSQV genome, verifier, and fixed-primitive contract"): the unit square
-  [0, 1] x [0, 1]. Convert by adding 0.5 to x and to y; the radius does not change.
+- Solver and verifier frame: the unit square [0, 1] x [0, 1]. Convert by adding
+  0.5 to x and to y; the radius does not change.
 
 ## Acceptance tolerance
 

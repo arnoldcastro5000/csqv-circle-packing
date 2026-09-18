@@ -1,12 +1,13 @@
-# Discovery: CSQV N=119 circle packing (beats best-known, exact-LP radii)
+# Discovery: CSQV N=119 circle packing (submitted, accepted, exact-LP radii)
 
 An improved packing for the Packomania CSQV problem (variable-radii circles in a
-unit square, maximize the sum of radii) at N = 119. It beats the published
-best-known.
+unit square, maximize the sum of radii) at N = 119. It was submitted to Packomania
+on 2026-09-16 and accepted (credited to Castro [21]); the site then re-optimized it
+higher, standard Packomania practice, to a value this repository's jamming optimizer
+independently reaches.
 
 IMPORTANT, honest provenance: this packing was found by an AI-authored numerical
-search. It is a solver-tooling result that proves
-the target is beatable.
+search. It is a solver-tooling result that proves the target is beatable.
 
 ## Provenance
 
@@ -18,7 +19,7 @@ the target is beatable.
 | terminal squeeze | the exact-LP center squeeze via the analytic dual gradient (`cpp/csqv/polish.hpp::center_polish_analytic`); re-squeezed to the analytic optimum on 2026-09-16, so the residual headroom is now zero |
 | repo commit (code base) | 537810f |
 | primitives used | exact radii-by-LP for fixed centers; independent verifier recomputes containment, overlap, and the sum |
-| submitted to Packomania | NO. Held; a submission is the operator's call. |
+| submitted to Packomania | YES. Submitted and accepted 2026-09-16 (credited to Castro [21]); the site re-optimized it higher afterward. |
 
 ## Result
 
@@ -26,12 +27,18 @@ the target is beatable.
 |---|---|
 | sum of radii (this packing, as re-parsed from the 15-dp `.pck`) | 5.749508785837 |
 | sum of radii (in-memory C++ champion, post re-squeeze) | 5.749508785956 |
-| Packomania live best-known (fetched 2026-09-14) | 5.748642197922 |
-| margin over the live record | +0.000866490 (about +0.0151%) |
+| Packomania best-known at discovery (fetched 2026-09-14) | 5.748642197922 |
+| margin at discovery | +0.000866490 (about +0.0151%) |
+| Packomania live best-known now (post-acceptance re-optimization) | 5.749519103944 (Castro [21]) |
 
-The live best-known was confirmed twice on 2026-09-14: the master table
-`csqv/txt/sumradii.txt` and the detail page `csqv/txt/csqv119.txt` both give
-`sumradii = 5.748642197922`.
+At discovery this packing beat the then-live best-known 5.748642197922 (confirmed
+2026-09-14 on both `csqv/txt/sumradii.txt` and `csqv/txt/csqv119.txt`). It was
+submitted 2026-09-16 and accepted (credited to Castro [21]). Packomania then
+re-optimized the accepted submission to 5.749519103944, about +1.0e-5 higher. This
+repository's jamming optimizer independently reaches that same value (5.749519103949)
+to the float floor, which shows the site's re-optimizer is the same-basin jamming
+squeeze rather than a better arrangement. The current live value therefore now
+slightly exceeds the packing recorded in this folder.
 
 ## Verification (independent, from the .pck)
 
@@ -63,7 +70,7 @@ The exact-LP radii and the strictly-feasible 15-dp `.pck` (from the native C++
 worker, built per `cpp/README.md`):
 
 ```
-csqv_worker 119 <budget_s> 0 <threads> <out_dir> "Arnold Castro" 15 --record 5.748642197922
+csqv_worker 119 <budget_s> 0 <threads> <out_dir> "Arnold Castro" 15 --record 5.749519103944
 ```
 
 The `--record <live_sum>` flag is optional and advisory (it labels the console

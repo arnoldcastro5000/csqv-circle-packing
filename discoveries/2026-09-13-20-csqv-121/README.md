@@ -5,8 +5,7 @@ unit square, maximize the sum of radii) at N = 121. It beats the published
 best-known and was submitted to Packomania on 2026-09-14.
 
 IMPORTANT, honest provenance: this packing was found by an AI-authored numerical
-search. It is a solver-tooling result that proves
-the target is beatable and supplies the fast primitives the LLM loop needs.
+search. It is a solver-tooling result that proves the target is beatable.
 
 ## Provenance
 
@@ -75,7 +74,7 @@ PYTHONPATH=. python3 -u discoveries/2026-09-13-20-csqv-121/run_scalable.py 121 <
 ```
 
 It writes the best packing to `n121-s<seed>-best.txt` (centered frame) and prints
-`*** RECORD BEATEN ***` when the sum exceeds the live record. Re-emit the `.pck`
-with `problems.csqv.record.to_pck` and re-check the 12-decimal round-trip at zero
-tolerance before trusting any value. Records move daily; re-fetch
+`*** RECORD BEATEN ***` when the sum exceeds the live record. Verify the `.pck`
+with `tools/validate_pck.py` at zero tolerance before trusting any value. Records
+move daily; re-fetch
 `https://www.packomania.com/csqv/txt/sumradii.txt` at verification time.

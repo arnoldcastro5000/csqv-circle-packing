@@ -3,15 +3,10 @@
 Research date: 2026-09-16. This note answers ONE question. What algorithm squeezes the SINGLE best
 CSQV champion to its EXACT local optimum, as a ONE-TIME terminal operation where cost is not a
 constraint? This is not a per-restart inner-loop primitive. The one-shot framing removes the
-throughput objection that ranked the contact-graph Newton polish fifth of six for IN-LOOP use
-([phase-2-csqv-polish-and-solver-levers.md](phase-2-csqv-polish-and-solver-levers.md);
-[phase-2-csqv-solver-improvement-catalog.md](phase-2-csqv-solver-improvement-catalog.md)).
+throughput objection that ranked the contact-graph Newton polish fifth of six for in-loop use.
 Precision-only is exactly what a terminal squeeze wants.
 
-Read the prior notes first for the shared structure. The analytic dual gradient and the
-envelope/Danskin theory are in
-[phase-2-csqv-mathematical-levers.md](phase-2-csqv-mathematical-levers.md). The solver menu and the
-sparse Lagrangian Hessian fact are in the catalog above. The primitives live in
+The primitives live in
 [cpp/csqv/lp.hpp](../../cpp/csqv/lp.hpp) (`radii_lp`, `solve_reduced_lp` with duals) and
 [cpp/csqv/polish.hpp](../../cpp/csqv/polish.hpp) (`center_polish`, `center_gradient`,
 `center_polish_analytic`).
@@ -46,11 +41,10 @@ The evidence that the missing gap is a SAME-BASIN second-order squeeze, not a ne
 strong. Packomania accepted our N=121 submission at sum 5.799069987171, then published
 5.799103501951, a gain of +3.35e-5 ([csqv.html](https://www.packomania.com/csqv/csqv.html), ref [21]).
 The published packing is OUR arrangement, transposed, with centers nudged about 1e-6, and our own
-exact LP on THEIR centers reproduces 5.799103 to 1e-12 (map decision log, ticket 33 entry). So the
+exact LP on THEIR centers reproduces 5.799103 to 1e-12. So the
 summation was correct and the gap was an un-squeezed optimum, not a bug and not a better basin. Our
 own `center_polish_analytic` reproduces this behavior: on N=122 it lifted 5.816908404257 to
-5.816928309336, a gain of +1.99e-5, feasible at zero tolerance
-([ticket 40](../../.scratch/csqv/issues/40-analytic-dual-gradient-center-polish.md)). So the terminal
+5.816928309336, a gain of +1.99e-5, feasible at zero tolerance. So the terminal
 post-processor needs a TRUE SECOND-ORDER solve to the exact local optimum of the CURRENT basin. It
 does not need a new basin.
 
@@ -281,7 +275,7 @@ Cost is not a constraint.
 | 3 | Rigidity guard (Donev LP jamming test) around rank 2 | Enables rank 2 safely; rejects false contacts | Required companion to rank 2 | Donev et al. [DOI](https://doi.org/10.1016/j.jcp.2003.10.047) |
 | 4 | Variance-minimizing refinement (Amore) | Yes to about 5.6e-21 contact variance; derivative-free | HIGH where the contact graph is ambiguous; slower | [arXiv:2212.12287](https://arxiv.org/abs/2212.12287) |
 | 5 | Extended-precision Newton (long double, __float128, mpmath) on rank 2 or 4 | Pushes below the 1e-12 float floor | Applies only when the float floor binds | [mpmath](https://pypi.org/project/mpmath/); [Boost](https://github.com/boostorg/multiprecision); interval Newton [arXiv:2011.05000](https://arxiv.org/pdf/2011.05000) |
-| 6 | Reduced-center Newton (LP value Hessian) | In principle, but the optimum is a kink | Needs the same active-set handling as rank 2, minus the full-space simplicity | Envelope/Danskin, [phase-2-csqv-mathematical-levers.md](phase-2-csqv-mathematical-levers.md) |
+| 6 | Reduced-center Newton (LP value Hessian) | In principle, but the optimum is a kink | Needs the same active-set handling as rank 2, minus the full-space simplicity | Envelope/Danskin |
 | 7 | Physical conditioner (Lubachevsky-Stillinger, repulsive anneal) | No; conditions a start, risks a different basin | Wrong stage for a terminal squeeze | Lubachevsky-Stillinger [DOI](https://doi.org/10.1007/BF01025983) |
 
 Reasoning for the top pick. Build rank 1 first. It is the single tool that reaches the exact optimum
@@ -337,8 +331,7 @@ Procedure. Take our SUBMITTED (pre-re-optimization) N=142 and N=143 packings. Re
 after `center_polish_analytic`. Run the full pipeline. PASS if the pipeline recovers the published
 values to within the `.pck` float floor (about 1e-9), that is, it closes the FULL gap that Specht's
 re-optimization closed. Report the fraction of the gap recovered, against the baseline that currently
-recovers only 40 to 66 percent of it
-([ticket 44](../../.scratch/csqv/issues/44-post-processing-refinement-for-the-best-candidate.md)). A
+recovers only 40 to 66 percent of it. A
 partial pass (for example 90 percent gap closure) still beats the baseline and is worth shipping; a
 full pass means we can reach the re-optimized optimum BEFORE submission and never leave the gap for
 Specht to close. Validate the final `.pck` at zero tolerance as always.
@@ -436,11 +429,5 @@ Specht to close. Validate the final `.pck` at zero tolerance as always.
   published 6.312993919570; N=141/142/143 ref [21] = Arnold Castro): https://www.packomania.com/csqv/csqv.html ;
   contacts near 3N: https://www.packomania.com/csqv/txt/contacts.txt ;
   Szabo-Csendes survey (Modified Billiard Simulation): https://www.inf.u-szeged.hu/~pszabo/Pub/45survey.pdf
-- Our code and issues: cpp/csqv/lp.hpp (`radii_lp`, `solve_reduced_lp` with duals), cpp/csqv/polish.hpp
-  (`center_polish`, `center_gradient`, `center_polish_analytic`),
-  .scratch/csqv/issues/40-analytic-dual-gradient-center-polish.md (N=122 +1.99e-5 measurement),
-  .scratch/csqv/issues/44-post-processing-refinement-for-the-best-candidate.md.
-- Companion notes: docs/research/phase-2-csqv-mathematical-levers.md,
-  docs/research/phase-2-csqv-polish-and-solver-levers.md,
-  docs/research/phase-2-csqv-solver-improvement-catalog.md,
-  docs/research/phase-2-csqv-method-and-precedent.md.
+- Our code: cpp/csqv/lp.hpp (`radii_lp`, `solve_reduced_lp` with duals), cpp/csqv/polish.hpp
+  (`center_polish`, `center_gradient`, `center_polish_analytic`).
