@@ -21,7 +21,7 @@
 
 namespace csqv {
 
-enum class LpStatus { Optimal, Infeasible, Unbounded };
+enum class LpStatus { Optimal, Infeasible, Unbounded, IterationLimit };
 
 struct LpResult {
   LpStatus status = LpStatus::Infeasible;
@@ -246,12 +246,17 @@ inline LpResult general_lp(int n, int m, const std::vector<double>& c, const std
   for (int i = 0; i < m; ++i) cost1[nY + i] = -1.0;
   const int rc1 = detail::glp_simplex_core(N, m, T, xB, basis, basisRow, status, cost1, hiA);
 
-  // Declare Infeasible only from a CONVERGED phase 1 (rc1 == 0): if the cap was hit (rc1 == 2)
-  // the artificial sum is not certified minimal, so a false Infeasible must not be reported.
+  // Phase 1 cannot be unbounded (the objective is bounded above by 0). If it hit the cap the
+  // basis is untrustworthy, so we cannot certify feasibility either way: report IterationLimit
+  // rather than risk a false Infeasible.
+  if (rc1 == 2) {
+    out.status = LpStatus::IterationLimit;
+    return out;
+  }
   double art_sum = 0.0;
   for (int i = 0; i < m; ++i)
     if (basis[i] >= nY) art_sum += std::fabs(xB[i]);
-  if (rc1 == 0 && art_sum > 1e-7) {
+  if (art_sum > 1e-7) {
     out.status = LpStatus::Infeasible;
     return out;
   }
@@ -267,6 +272,10 @@ inline LpResult general_lp(int n, int m, const std::vector<double>& c, const std
   const int rc = detail::glp_simplex_core(N, m, T, xB, basis, basisRow, status, cost2, hiA);
   if (rc == 1) {
     out.status = LpStatus::Unbounded;
+    return out;
+  }
+  if (rc == 2) {  // non-convergence: the recovered point is not certified optimal
+    out.status = LpStatus::IterationLimit;
     return out;
   }
 

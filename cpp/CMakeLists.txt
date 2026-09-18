@@ -67,3 +67,9 @@ add_test(NAME csqv_spread_test COMMAND csqv_spread_test)
 add_executable(csqv_general_lp_test csqv/general_lp_test.cpp)
 target_include_directories(csqv_general_lp_test PRIVATE csqv)
 add_test(NAME csqv_general_lp_test COMMAND csqv_general_lp_test)
+
+# jam_slp.hpp::jam_slp: the trust-region SLP jamming optimizer (Donev flex LP iterated to a
+# jammed optimum), ported from problems/csqv/terminal_squeeze.py (ADR 0003).
+add_executable(csqv_jam_slp_test csqv/jam_slp_test.cpp)
+target_include_directories(csqv_jam_slp_test PRIVATE csqv)
+add_test(NAME csqv_jam_slp_test COMMAND csqv_jam_slp_test)
