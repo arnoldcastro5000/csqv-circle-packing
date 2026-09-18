@@ -37,15 +37,19 @@ $(BUILD)/csqv_fingerprint_test: csqv/fingerprint_test.cpp csqv/fingerprint.hpp c
 $(BUILD)/csqv_spread_test: csqv/spread_test.cpp csqv/spread.hpp csqv/search.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/spread_test.cpp -o $@
 
+$(BUILD)/csqv_general_lp_test: csqv/general_lp_test.cpp csqv/general_lp.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/general_lp_test.cpp -o $@
+
 # Build and run the unit tests (save: atomic+monotonic, no leak; report: --record flag;
 # center_polish: monotone exact-LP center squeeze; fingerprint: basin hash; spread: seed spreading).
 test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_polish_test \
-      $(BUILD)/csqv_fingerprint_test $(BUILD)/csqv_spread_test
+      $(BUILD)/csqv_fingerprint_test $(BUILD)/csqv_spread_test $(BUILD)/csqv_general_lp_test
 	$(BUILD)/csqv_save_test
 	$(BUILD)/csqv_report_test
 	$(BUILD)/csqv_center_polish_test
 	$(BUILD)/csqv_fingerprint_test
 	$(BUILD)/csqv_spread_test
+	$(BUILD)/csqv_general_lp_test
 
 clean:
 	rm -rf $(BUILD)

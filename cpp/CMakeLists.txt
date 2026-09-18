@@ -61,3 +61,9 @@ add_test(NAME csqv_fingerprint_test COMMAND csqv_fingerprint_test)
 add_executable(csqv_spread_test csqv/spread_test.cpp)
 target_include_directories(csqv_spread_test PRIVATE csqv)
 add_test(NAME csqv_spread_test COMMAND csqv_spread_test)
+
+# general_lp.hpp::general_lp: the general two-phase bounded-variable simplex (arbitrary rows,
+# negative bounds, phase 1) that the jamming optimizer builds on (ticket 01).
+add_executable(csqv_general_lp_test csqv/general_lp_test.cpp)
+target_include_directories(csqv_general_lp_test PRIVATE csqv)
+add_test(NAME csqv_general_lp_test COMMAND csqv_general_lp_test)
