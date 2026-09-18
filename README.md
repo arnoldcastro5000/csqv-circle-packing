@@ -5,6 +5,10 @@ circles of **variable radii** into a unit square with no overlap, maximizing the
 the radii**. This is the "circles in a square, variable radii" (csqv) entry in E. Specht's
 [Packomania](https://www.packomania.com/) record book.
 
+The solver is coded by Claude Opus 4.8 (the native C++ worker) and human-directed. It proves 
+the targets are beatable and are offered as verified feasible packings. Each discovery folder 
+carries its own `README.md` with the exact provenance.
+
 The solver is a self-contained C++17 worker (no dependencies, no network at build time).
 The `discoveries/` folder holds packings that beat, match, or extend the published
 best-known, each independently verified feasible at zero tolerance.
@@ -65,13 +69,6 @@ is the same centers with exactly-optimal (exact-LP) radii, 5.799074421369.
 N=120 followed the same pattern: our submission (5.774548479515) was accepted and
 then re-optimized higher on the site to 5.774582323763 (credited to Castro [21]).
 So both N=120 and N=121 currently show a live value above the packing recorded here.
-
-## Honest provenance
-
-These packings were found by a **numerical search** (an AI-authored cold multi-start, then
-the native C++ worker), **not** by an LLM. They prove the targets are beatable and are
-offered as verified feasible packings. Each discovery folder carries its own `README.md`
-with the exact provenance.
 
 ## The solver
 
