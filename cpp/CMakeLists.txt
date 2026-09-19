@@ -30,8 +30,9 @@ target_link_libraries(csqv_worker PRIVATE Threads::Threads)
 add_executable(csqv_check csqv/check.cpp)
 target_include_directories(csqv_check PRIVATE csqv)
 
-# squeeze_check: the first-order center_polish_analytic squeeze audit and the analytic
-# baseline for the terminal second-order post-processor (ticket 45).
+# squeeze_check: the C++-frame squeeze harness. Default = the first-order center_polish_analytic
+# audit and analytic baseline (ticket 45); --jam = the SLP jammer + native .pck emit, the C++
+# half of the acceptance gate (the acceptance harness re-scores it in the Python frame).
 add_executable(csqv_squeeze_check csqv/squeeze_check.cpp)
 target_include_directories(csqv_squeeze_check PRIVATE csqv)
 
