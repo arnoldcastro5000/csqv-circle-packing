@@ -31,6 +31,9 @@ $(BUILD)/csqv_report_test: csqv/report_test.cpp csqv/report.hpp | $(BUILD)
 $(BUILD)/csqv_center_polish_test: csqv/center_polish_test.cpp csqv/polish.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/center_polish_test.cpp -o $@
 
+$(BUILD)/csqv_penalty_prefilter_test: csqv/penalty_prefilter_test.cpp csqv/polish.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/penalty_prefilter_test.cpp -o $@
+
 $(BUILD)/csqv_fingerprint_test: csqv/fingerprint_test.cpp csqv/fingerprint.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/fingerprint_test.cpp -o $@
 
@@ -47,10 +50,11 @@ $(BUILD)/csqv_jam_slp_test: csqv/jam_slp_test.cpp csqv/jam_slp.hpp csqv/general_
 # center_polish: monotone exact-LP center squeeze; fingerprint: basin hash; spread: seed spreading).
 test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_polish_test \
       $(BUILD)/csqv_fingerprint_test $(BUILD)/csqv_spread_test $(BUILD)/csqv_general_lp_test \
-      $(BUILD)/csqv_jam_slp_test
+      $(BUILD)/csqv_jam_slp_test $(BUILD)/csqv_penalty_prefilter_test
 	$(BUILD)/csqv_save_test
 	$(BUILD)/csqv_report_test
 	$(BUILD)/csqv_center_polish_test
+	$(BUILD)/csqv_penalty_prefilter_test
 	$(BUILD)/csqv_fingerprint_test
 	$(BUILD)/csqv_spread_test
 	$(BUILD)/csqv_general_lp_test

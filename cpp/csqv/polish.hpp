@@ -33,8 +33,17 @@ inline double penalty_obj_grad(const std::vector<double>& v, int n, const std::v
     const double xi = v[3 * i], yi = v[3 * i + 1], ri = v[3 * i + 2];
     const double xj = v[3 * j], yj = v[3 * j + 1], rj = v[3 * j + 2];
     const double dx = xi - xj, dy = yi - yj;
-    const double d = std::sqrt(dx * dx + dy * dy) + 1e-12;
-    const double o = (ri + rj) - d;
+    // Squared-distance pre-filter: a pair overlaps only if d < ri+rj, i.e.
+    // dx^2+dy^2 < (ri+rj)^2. Skip the sqrt for the non-overlapping majority. This is
+    // EXACT: the eager path enters only when (ri+rj) - sqrt(dist2) - 1e-12 > 0, so there
+    // sqrt(dist2) < ri+rj by at least 1e-12 (thousands of ulps at this scale) and
+    // dist2 < (ri+rj)^2 always holds. The inner o>0 check below reproduces the original
+    // branch bit-for-bit, so f and g are identical to the dense sweep.
+    const double sum = ri + rj;
+    const double dist2 = dx * dx + dy * dy;
+    if (dist2 >= sum * sum) continue;
+    const double d = std::sqrt(dist2) + 1e-12;
+    const double o = sum - d;
     if (o > 0.0) {
       f += lam * o * o;
       const double w = 2.0 * lam * o;

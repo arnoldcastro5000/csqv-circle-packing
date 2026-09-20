@@ -52,6 +52,11 @@ add_executable(csqv_center_polish_test csqv/center_polish_test.cpp)
 target_include_directories(csqv_center_polish_test PRIVATE csqv)
 add_test(NAME csqv_center_polish_test COMMAND csqv_center_polish_test)
 
+# polish.hpp::penalty_obj_grad: the squared-distance pre-filter is bit-exact vs the dense sweep.
+add_executable(csqv_penalty_prefilter_test csqv/penalty_prefilter_test.cpp)
+target_include_directories(csqv_penalty_prefilter_test PRIVATE csqv)
+add_test(NAME csqv_penalty_prefilter_test COMMAND csqv_penalty_prefilter_test)
+
 # fingerprint.hpp::basin_fingerprint: the WL contact-graph basin hash (stable, D4-invariant,
 # discriminating). spread.hpp: the low-discrepancy seed spreading and defect kick. Both back the
 # basin-dedup + seed-spread worker (ticket 42 / ADR 0002).
