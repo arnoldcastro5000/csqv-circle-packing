@@ -2,8 +2,8 @@
 
 A solver and a set of verified record packings for the **CSQV** problem: pack `N`
 circles of **variable radii** into a unit square with no overlap, maximizing the **sum of
-the radii**. This is the "circles in a square, variable radii" (csqv) entry in E. Specht's
-[Packomania](https://www.packomania.com/) [record](https://www.packomania.com/csqv/csqv.html).
+the radii**. This is the "circles in a square, variable radii" (csqv) entry in Eckhard Specht's
+Packomania [record](https://www.packomania.com/csqv/csqv.html).
 
 The solver is coded by Claude Code Opus 4.8 (the native C++ worker) and human-directed. It proves 
 some targets are beatable and are offered as verified feasible packings. Each discovery folder 
