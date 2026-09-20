@@ -1,9 +1,7 @@
 # CSQV native worker (C++)
 
-A native, multi-threaded C++ port of the scalable CSQV record search
-(`results/run_scalable.py` + `results/scalable_polish.py`). It exists to run the search
-at full core count on a host machine, past the vCPU cap of the sandbox the Python code
-runs in. It targets **N=121** (the Specht-square record we beat) and works for any N.
+A native, multi-threaded C++ CSQV record search. It exists to run the search
+at full core count on a host machine. It targets **N=121** (the Specht-square record we beat) and works for any N.
 
 The worker is **self-contained**: standard C++17 only, no external libraries, no network
 at build time. It builds with a free compiler (MinGW-w64 on Windows).
