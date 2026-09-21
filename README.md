@@ -6,8 +6,8 @@ the radii**. This is the "circles in a square, variable radii" (csqv) entry in E
 Packomania [record](https://www.packomania.com/csqv/csqv.html).
 
 The solver is coded by Claude Code Opus 4.8 (the native C++ worker) and human-directed. It proves 
-some targets are beatable and are offered as verified feasible packings. Each discovery folder 
-carries its own `README.md` with the exact provenance.
+some targets are beatable and are submitted as verified feasible packings. Each discovery folder 
+carries its own `README.md`.
 
 The solver is a self-contained C++17 worker (no dependencies, no network at build time).
 The `discoveries/` folder holds packings that beat, match, or extend the published
