@@ -8,8 +8,6 @@ at build time. It builds with a free compiler (MinGW-w64 on Windows).
 
 ## What it reproduces
 
-One restart mirrors the Python chain exactly in structure:
-
 1. `construct` - a varied seed (grid / jitter / hex / random)
 2. `growpush` - LP-scaled overlap relaxation
 3. `radii_lp` - the **exact** optimal radii for fixed centers (an LP)
