@@ -30,8 +30,9 @@ target_link_libraries(csqv_worker PRIVATE Threads::Threads)
 add_executable(csqv_check csqv/check.cpp)
 target_include_directories(csqv_check PRIVATE csqv)
 
-# squeeze_check: the first-order center_polish_analytic squeeze audit and the analytic
-# baseline for the terminal second-order post-processor (ticket 45).
+# squeeze_check: the C++-frame squeeze harness. Default = the first-order center_polish_analytic
+# audit and analytic baseline (ticket 45); --jam = the SLP jammer + native .pck emit, the C++
+# half of the acceptance gate (the acceptance harness re-scores it in the Python frame).
 add_executable(csqv_squeeze_check csqv/squeeze_check.cpp)
 target_include_directories(csqv_squeeze_check PRIVATE csqv)
 
@@ -61,3 +62,15 @@ add_test(NAME csqv_fingerprint_test COMMAND csqv_fingerprint_test)
 add_executable(csqv_spread_test csqv/spread_test.cpp)
 target_include_directories(csqv_spread_test PRIVATE csqv)
 add_test(NAME csqv_spread_test COMMAND csqv_spread_test)
+
+# general_lp.hpp::general_lp: the general two-phase bounded-variable simplex (arbitrary rows,
+# negative bounds, phase 1) that the jamming optimizer builds on (ticket 01).
+add_executable(csqv_general_lp_test csqv/general_lp_test.cpp)
+target_include_directories(csqv_general_lp_test PRIVATE csqv)
+add_test(NAME csqv_general_lp_test COMMAND csqv_general_lp_test)
+
+# jam_slp.hpp::jam_slp: the trust-region SLP jamming optimizer (Donev flex LP iterated to a
+# jammed optimum), ported from problems/csqv/terminal_squeeze.py (ADR 0003).
+add_executable(csqv_jam_slp_test csqv/jam_slp_test.cpp)
+target_include_directories(csqv_jam_slp_test PRIVATE csqv)
+add_test(NAME csqv_jam_slp_test COMMAND csqv_jam_slp_test)
