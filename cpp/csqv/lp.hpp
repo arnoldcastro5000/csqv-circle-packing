@@ -46,6 +46,28 @@ namespace detail {
 // the guard's fallback, and the unit test compares the incremental pricing against it.
 enum class Pricing { Incremental, Recompute };
 
+// Test hook for the fallback path. If K > 0, the guard fails at the K-th basis change of
+// each solve, so the solve continues with the full recompute from that pivot. The result
+// must stay bit-identical. lp_test.cpp passes K directly; the bench fallback build sets the
+// default with -DCSQV_LP_FORCE_FALLBACK_AT=K. 0 (the default) disables the hook.
+#ifndef CSQV_LP_FORCE_FALLBACK_AT
+#define CSQV_LP_FORCE_FALLBACK_AT 0
+#endif
+
+#ifdef CSQV_LP_VERIFY_PRICING
+// Bench-only check (cpp/bench/pricing_check.cpp). At each pricing, the solve also computes
+// the full recompute of each incremental d_j and counts the compares and the mismatches.
+// It is slow; never define CSQV_LP_VERIFY_PRICING in a worker build.
+inline std::atomic<long>& lp_pricing_compares() {
+  static std::atomic<long> count{0};
+  return count;
+}
+inline std::atomic<long>& lp_pricing_mismatches() {
+  static std::atomic<long> count{0};
+  return count;
+}
+#endif
+
 // True if v is an exact multiple of 1/2 and |2v| < 2^51. NaN and infinity give false.
 // The test rounds 2v to an integer: adding and then subtracting 1.5 * 2^52 does this in
 // exact IEEE-754 arithmetic. If the rounding changes nothing, 2v is an integer.
@@ -96,7 +118,8 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
                                             const std::vector<double>& rhs,
                                             std::vector<double>* pair_dual = nullptr,
                                             std::vector<double>* struct_rc = nullptr,
-                                            Pricing pricing = Pricing::Incremental) {
+                                            Pricing pricing = Pricing::Incremental,
+                                            int force_fallback_at = CSQV_LP_FORCE_FALLBACK_AT) {
   const int m = static_cast<int>(pairs.size());
   const int N = k + m;
   const double INF = std::numeric_limits<double>::infinity();
@@ -136,6 +159,10 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
   // Reduced costs d_j = cost_j - cost_B^T T_j. The slack basis has cost_B = 0, so d = cost.
   bool incremental = pricing == Pricing::Incremental;
   std::vector<double> d = cost;
+  int basis_changes = 0;  // counts pivots for the force_fallback_at test hook
+#ifdef CSQV_LP_VERIFY_PRICING
+  long compares = 0, mismatches = 0;
+#endif
 
   const int max_iter = 50 * (N + 10);
   for (int iter = 0; iter < max_iter; ++iter) {
@@ -149,6 +176,14 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
       double dj;
       if (incremental) {
         dj = d[j];
+#ifdef CSQV_LP_VERIFY_PRICING
+        double rj = cost[j];
+        for (int p = 0; p < m; ++p) {
+          if (cost[basis[p]] != 0.0) rj -= cost[basis[p]] * Tat(p, j);
+        }
+        ++compares;
+        if (!(rj == dj)) ++mismatches;  // == ignores the sign of an exact zero
+#endif
       } else {
         dj = cost[j];
         for (int p = 0; p < m; ++p) {
@@ -232,7 +267,9 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     for (int j = 0; j < N; ++j) Tat(leave_row, j) /= piv;
     // A bound flip (above) does not change d. A basis change updates d with the divided
     // pivot row. If the guard fails, the rest of this solve uses the full recompute.
-    if (incremental && !update_reduced_costs(d, &Tat(leave_row, 0), q, piv)) {
+    ++basis_changes;
+    if (incremental && (!update_reduced_costs(d, &Tat(leave_row, 0), q, piv) ||
+                        basis_changes == force_fallback_at)) {
       incremental = false;
       lp_pricing_fallbacks().fetch_add(1, std::memory_order_relaxed);
     }
@@ -261,6 +298,10 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     if (z[i] < 0.0) z[i] = 0.0;
     if (z[i] > u[i]) z[i] = u[i];
   }
+#ifdef CSQV_LP_VERIFY_PRICING
+  lp_pricing_compares().fetch_add(compares, std::memory_order_relaxed);
+  lp_pricing_mismatches().fetch_add(mismatches, std::memory_order_relaxed);
+#endif
 
   // Optimal-basis duals (ticket 40). Reduced cost of column j is cost_j - cost_B^T (B^-1 A)_j;
   // the tableau row for a basic variable already holds B^-1 A, so this is a single dot product

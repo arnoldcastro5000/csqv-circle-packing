@@ -7,7 +7,7 @@ LDFLAGS ?= -pthread
 
 BUILD := build
 
-.PHONY: all clean test
+.PHONY: all clean test bench
 all: $(BUILD)/csqv_worker $(BUILD)/csqv_check $(BUILD)/csqv_squeeze_check
 
 $(BUILD):
@@ -49,9 +49,24 @@ $(BUILD)/csqv_lp_test: csqv/lp_test.cpp csqv/lp.hpp csqv/search.hpp csqv/benchma
 $(BUILD)/csqv_jam_slp_test: csqv/jam_slp_test.cpp csqv/jam_slp.hpp csqv/general_lp.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/jam_slp_test.cpp -o $@
 
+# Bench tools for bit-identical speed work (see bench/README.md). The full gate against a
+# git ref is bench/gate.sh; these targets build the tools from this tree only.
+BENCH_TOOLS := perf_driver lp_bench trajectory_hash
+bench: $(addprefix $(BUILD)/bench/,$(BENCH_TOOLS)) $(BUILD)/bench/pricing_check
+
+$(BUILD)/bench:
+	mkdir -p $(BUILD)/bench
+
+$(addprefix $(BUILD)/bench/,$(BENCH_TOOLS)): $(BUILD)/bench/%: bench/%.cpp csqv/*.hpp | $(BUILD)/bench
+	$(CXX) $(CXXFLAGS) $< -o $@
+
+$(BUILD)/bench/pricing_check: bench/pricing_check.cpp csqv/*.hpp | $(BUILD)/bench
+	$(CXX) $(CXXFLAGS) -DCSQV_LP_VERIFY_PRICING $< -o $@
+
 # Build and run the unit tests (save: atomic+monotonic, no leak; report: --record flag;
 # center_polish: monotone exact-LP center squeeze; fingerprint: basin hash; spread: seed spreading;
-# lp: incremental reduced-cost pricing is bit-identical to the full recompute).
+# lp: incremental reduced-cost pricing, and a forced mid-solve fallback, are bit-identical to
+# the full recompute).
 test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_polish_test \
       $(BUILD)/csqv_fingerprint_test $(BUILD)/csqv_spread_test $(BUILD)/csqv_general_lp_test \
       $(BUILD)/csqv_jam_slp_test $(BUILD)/csqv_penalty_prefilter_test $(BUILD)/csqv_lp_test

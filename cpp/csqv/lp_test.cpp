@@ -11,6 +11,9 @@
 //      is_half_integral_pivot accepts only +-1/2, +-1, +-2.
 //   4) GUARD STEP: update_reduced_costs applies d_j -= d_q * row_j, and it reports a
 //      failure for a non-half-integral row or pivot (the signal for the fallback).
+//   5) FALLBACK MID-SOLVE: a guard failure forced at the K-th basis change (the test hook)
+//      switches the solve to the full recompute, counts one fallback, and still returns
+//      the same radii and duals, bit for bit. Normal runs never reach this path.
 // Build: see cpp/CMakeLists.txt (target csqv_lp_test) or cpp/Makefile.
 #include <algorithm>
 #include <array>
@@ -83,6 +86,32 @@ static void check_modes_agree(const FullLp& lp, const char* what) {
   CHECK(csqv::lp_pricing_fallbacks().load() == before, "the half-integral guard never trips");
 }
 
+// Forces the guard to fail at the K-th basis change for each K in kForceAt. Returns the
+// number of solves where the forced failure happened (a solve with fewer than K basis
+// changes does not reach it).
+static int check_forced_fallback(const FullLp& lp, const char* what) {
+  using csqv::detail::Pricing;
+  std::vector<double> dual_rec, rc_rec;
+  const std::vector<double> z_rec = csqv::detail::solve_reduced_lp(
+      lp.k, lp.u, lp.pairs, lp.rhs, &dual_rec, &rc_rec, Pricing::Recompute);
+  int tripped = 0;
+  for (int force_at : {1, 2, 3, 7, 25}) {
+    std::vector<double> dual_fb, rc_fb;
+    const long before = csqv::lp_pricing_fallbacks().load();
+    const std::vector<double> z_fb = csqv::detail::solve_reduced_lp(
+        lp.k, lp.u, lp.pairs, lp.rhs, &dual_fb, &rc_fb, Pricing::Incremental, force_at);
+    const long trips = csqv::lp_pricing_fallbacks().load() - before;
+    CHECK(trips == 0 || trips == 1, "a solve counts at most one fallback");
+    tripped += static_cast<int>(trips);
+    if (!same_bits(z_fb, z_rec) || !same_bits(dual_fb, dual_rec) || !same_bits(rc_fb, rc_rec))
+      std::fprintf(stderr, "  fallback at basis change %d differs: %s\n", force_at, what);
+    CHECK(same_bits(z_fb, z_rec), "fallback radii are bit-identical to the recompute");
+    CHECK(same_bits(dual_fb, dual_rec), "fallback pair duals are bit-identical");
+    CHECK(same_bits(rc_fb, rc_rec), "fallback structural reduced costs are bit-identical");
+  }
+  return tripped;
+}
+
 int main() {
   // 1 + 2 on the startup benchmark configurations (random centers, N up to 60).
   {
@@ -112,6 +141,33 @@ int main() {
         check_modes_agree(full_lp(x, y, n), kinds[s]);
       }
     }
+  }
+
+  // 5 on the same two families. The forced failure must happen in most solves, or the hook
+  // has no effect and the check proves nothing. (A small LP can end before the K-th basis
+  // change.)
+  {
+    int tripped = 0, solves = 0;
+    const std::pair<int, uint64_t> cases[] = {{5, 1}, {13, 2}, {30, 3}, {60, 4}};
+    for (auto [n, seed] : cases) {
+      std::vector<double> x, y;
+      csqv::bench_centers(n, seed, x, y);
+      tripped += check_forced_fallback(full_lp(x, y, n), "bench");
+      solves += 5;
+    }
+    const char* kinds[] = {"grid", "jitter", "hex", "random"};
+    for (int n : {20, 45, 70}) {
+      for (int s = 0; s < 4; ++s) {
+        csqv::Rng rng(static_cast<uint64_t>(100 + s) * 0x9e3779b97f4a7c15ULL + 1);
+        std::vector<double> x, y;
+        csqv::construct(n, kinds[s], rng, x, y);
+        csqv::growpush(x, y, n, rng);
+        tripped += check_forced_fallback(full_lp(x, y, n), kinds[s]);
+        solves += 5;
+      }
+    }
+    std::printf("lp_test: forced fallback tripped in %d of %d solves\n", tripped, solves);
+    CHECK(tripped >= solves * 3 / 4, "the forced fallback trips in most solves");
   }
 
   // 3: the guard predicates.
