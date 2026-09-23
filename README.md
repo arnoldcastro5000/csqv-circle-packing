@@ -20,6 +20,7 @@ Live best-known re-fetched 2026-09-23 for every N below.
 
 | N   | our packing (sum) | Packomania live best-known   | status |
 |-----|-------------------|------------------------------|--------|
+| 84  | 4.816500878221    | 4.816500879756 (Castro [21]) | **still ours**: published and credited to us, the only record here still standing; the site re-optimized our submission by +1.5e-9 (float-scale), and our full seal independently reaches 4.816500879755 |
 | 93  | 5.073447923447    | 5.076245164998 (Denoual)     | submitted; the live best-known now exceeds our packing |
 | 94  | 5.100695331105    | 5.101975416147 (Denoual)     | submitted; the live best-known now exceeds our packing |
 | 95  | 5.126321536373    | 5.129111105835 (Denoual)     | submitted; the live best-known now exceeds our packing |
@@ -38,8 +39,9 @@ Live best-known re-fetched 2026-09-23 for every N below.
 As of 2026-09-23, none of the packings listed above still leads. Other contributors have
 surpassed every one of them on the live site: Wilfred Heap [17] now holds N=96, 97, 98, 99,
 118, 119, 120, 121, 141, and 142; Jean-René Denoual holds N=93, 94, 95, and 143. The only
-CSQV record still credited to us on Packomania is N=84 (4.816500879756, Arnold Castro [21]),
-which is not packaged in this repository. None of these packings is marked proven-optimal.
+CSQV record still credited to us on Packomania is N=84 (4.816500879756, Arnold Castro [21]);
+its packing is in `discoveries/2026-09-23-00-csqv-84/`. None of these packings is marked
+proven-optimal.
 
 Records move daily. Re-fetch `https://www.packomania.com/csqv/txt/sumradii.txt` before
 trusting any comparison above.
