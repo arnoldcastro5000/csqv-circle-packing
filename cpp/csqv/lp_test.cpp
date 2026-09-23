@@ -9,11 +9,16 @@
 //   2) NO FALLBACK: the half-integral guard never trips on those LPs.
 //   3) GUARD PREDICATES: is_half_integral accepts k/2 and rejects anything else;
 //      is_half_integral_pivot accepts only +-1/2, +-1, +-2.
-//   4) GUARD STEP: update_reduced_costs applies d_j -= d_q * row_j, and it reports a
-//      failure for a non-half-integral row or pivot (the signal for the fallback).
+//   4) GUARD STEP: update_reduced_costs applies d_j -= d_q * row_j over the nonzero columns
+//      of the pivot row, and it reports a failure for a non-half-integral row or pivot (the
+//      signal for the fallback). The skipped zero columns give the same bits as the dense
+//      update, because d never holds -0.
 //   5) FALLBACK MID-SOLVE: a guard failure forced at the K-th basis change (the test hook)
 //      switches the solve to the full recompute, counts one fallback, and still returns
 //      the same radii and duals, bit for bit. Normal runs never reach this path.
+//   6) NO NEGATIVE ZERO: the radii and the duals never hold -0, also when a bound u_i is -0
+//      (a center at x = -0). The sparse elimination leaves other zero signs in the tableau
+//      than the dense one; this invariant is why those signs cannot reach the output.
 // Build: see cpp/CMakeLists.txt (target csqv_lp_test) or cpp/Makefile.
 #include <algorithm>
 #include <array>
@@ -112,6 +117,24 @@ static int check_forced_fallback(const FullLp& lp, const char* what) {
   return tripped;
 }
 
+static bool has_negative_zero(const std::vector<double>& v) {
+  return std::any_of(v.begin(), v.end(), [](double a) { return a == 0.0 && std::signbit(a); });
+}
+
+// Solves in both pricing modes and checks the radii and the duals for -0. Returns 1.
+static int check_no_negative_zero(const FullLp& lp) {
+  using csqv::detail::Pricing;
+  for (Pricing pricing : {Pricing::Incremental, Pricing::Recompute}) {
+    std::vector<double> dual, rc;
+    const std::vector<double> z =
+        csqv::detail::solve_reduced_lp(lp.k, lp.u, lp.pairs, lp.rhs, &dual, &rc, pricing);
+    CHECK(!has_negative_zero(z), "no radius is -0");
+    CHECK(!has_negative_zero(dual), "no pair dual is -0");
+    CHECK(!has_negative_zero(rc), "no structural reduced cost is -0");
+  }
+  return 1;
+}
+
 int main() {
   // 1 + 2 on the startup benchmark configurations (random centers, N up to 60).
   {
@@ -186,23 +209,72 @@ int main() {
       CHECK(!is_half_integral_pivot(p), "any other pivot is rejected");
   }
 
-  // 4: the guarded update step, on hand-made rows.
+  // 4: the guarded update step, on hand-made rows. nz lists the nonzero columns of the row.
   {
     using csqv::detail::update_reduced_costs;
     // Exact case: d_q = 1, a half-integral row with a unit at q. d_q becomes 0.
     std::vector<double> d = {1.0, 0.5, 0.0, -1.0};
     const std::vector<double> row = {1.0, 0.5, -0.5, 2.0};
-    CHECK(update_reduced_costs(d, row.data(), 0, 2.0), "a half-integral step passes the guard");
+    CHECK(update_reduced_costs(d, row.data(), {0, 1, 2, 3}, 0, 2.0),
+          "a half-integral step passes the guard");
     CHECK(d[0] == 0.0 && d[1] == 0.0 && d[2] == 0.5 && d[3] == -3.0,
           "the step applies d_j -= d_q * row_j");
+    // A row with zero columns of both signs. The sparse step skips them and must give the
+    // same bits as the dense step d_j -= d_q * row_j over every column.
+    const std::vector<double> d0 = {0.0, -1.5, 1.0, 0.0, 2.0, -0.5};
+    const std::vector<double> zrow = {-0.0, 1.0, 0.0, 0.5, -0.0, -2.0};
+    for (double dq : {1.0, -1.0, 2.0}) {
+      std::vector<double> dense = d0, sparse = d0;
+      dense[1] = sparse[1] = dq;
+      const double q_val = dense[1];
+      for (size_t j = 0; j < dense.size(); ++j) dense[j] -= q_val * zrow[j];
+      CHECK(update_reduced_costs(sparse, zrow.data(), {1, 3, 5}, 1, -1.0),
+            "a sparse half-integral step passes the guard");
+      CHECK(same_bits(sparse, dense), "the sparse step gives the bits of the dense step");
+    }
     // A row entry of 1/3 makes d_j inexact: the guard must fail.
     std::vector<double> d2 = {1.0, 0.5};
     const std::vector<double> row2 = {1.0, 1.0 / 3.0};
-    CHECK(!update_reduced_costs(d2, row2.data(), 0, 1.0), "an inexact d_j fails the guard");
+    CHECK(!update_reduced_costs(d2, row2.data(), {0, 1}, 0, 1.0),
+          "an inexact d_j fails the guard");
     // A half-integral row with a pivot of 3 (inexact division): the guard must fail.
     std::vector<double> d3 = {1.0, 0.5};
     const std::vector<double> row3 = {1.0, 0.5};
-    CHECK(!update_reduced_costs(d3, row3.data(), 0, 3.0), "an inexact pivot fails the guard");
+    CHECK(!update_reduced_costs(d3, row3.data(), {0, 1}, 0, 3.0),
+          "an inexact pivot fails the guard");
+  }
+
+  // 6: no -0 in the output. A hand-made LP first: circle 0 has the bound u_0 = -0 (its
+  // center is at x = -0). The simplex flips it to its upper bound, so the radius is the
+  // bound itself. Then the real LP families.
+  {
+    const std::vector<double> u = {-0.0, 0.5};
+    const std::vector<std::array<int, 2>> pairs = {{0, 1}};
+    const std::vector<double> rhs = {1.0};
+    std::vector<double> dual, rc;
+    const std::vector<double> z = csqv::detail::solve_reduced_lp(2, u, pairs, rhs, &dual, &rc);
+    CHECK(z.size() == 2 && z[0] == 0.0 && z[1] == 0.5, "the hand-made LP solves");
+    CHECK(!has_negative_zero(z), "a -0 bound gives a +0 radius");
+    CHECK(!has_negative_zero(dual) && !has_negative_zero(rc), "a -0 bound gives no -0 dual");
+
+    int checked = 0;
+    const std::pair<int, uint64_t> cases[] = {{5, 1}, {13, 2}, {30, 3}, {60, 4}};
+    for (auto [n, seed] : cases) {
+      std::vector<double> x, y;
+      csqv::bench_centers(n, seed, x, y);
+      checked += check_no_negative_zero(full_lp(x, y, n));
+    }
+    const char* kinds[] = {"grid", "jitter", "hex", "random"};
+    for (int n : {20, 45, 70}) {
+      for (int s = 0; s < 4; ++s) {
+        csqv::Rng rng(static_cast<uint64_t>(100 + s) * 0x9e3779b97f4a7c15ULL + 1);
+        std::vector<double> x, y;
+        csqv::construct(n, kinds[s], rng, x, y);
+        csqv::growpush(x, y, n, rng);
+        checked += check_no_negative_zero(full_lp(x, y, n));
+      }
+    }
+    CHECK(checked == 16, "all no-negative-zero cases ran");
   }
 
   if (g_failures == 0) std::printf("lp_test: all checks passed\n");

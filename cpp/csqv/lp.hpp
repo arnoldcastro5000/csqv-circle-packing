@@ -16,12 +16,28 @@
 // and N=121 found |entry| <= 2. So each pivot is +-1/2,
 // +-1 or +-2, and each tableau and reduced-cost operation is exact in IEEE-754.
 // Because of this, each pivot updates the reduced-cost row (d_j -= d_q * T(leave, j)). A
-// full recompute from the tableau is not necessary. The update gives the same values as
-// the recompute; only the sign of an exact zero in d can differ. The pricing ignores that
-// sign, and d is internal, so the radii and the duals stay bit-identical.
+// full recompute from the tableau is not necessary. The update gives the same bits as the
+// recompute (both start from cost and subtract; see "Signed zeros" below), so the radii
+// and the duals stay bit-identical.
 // A guard checks each pivot and each updated d_j. It does not check every tableau entry.
 // If the guard fails, the solve uses the full recompute (the original pricing) from that
 // pivot to its end.
+//
+// Signed zeros. The pivot row is sparse, so a basis change divides and eliminates only over
+// its nonzero columns. A dense pass also computes x - f * (+-0) at each zero column. That
+// changes x only if x is an exact zero, and then only its sign. So the sparse pass leaves
+// other zero signs in the tableau T than the dense pass. These signs cannot reach the
+// output, because d and xB never hold -0:
+// - In round-to-nearest, x - y is -0 only if x is -0 (and y is +0), and x + y is -0 only
+//   if x and y are both -0. A subtraction from a value that is not -0 never gives -0.
+// - d starts as cost (+0 or 1) and changes only by subtraction. xB starts as rhs + 0.0 and
+//   changes only by subtraction, or takes a bound plus the step: lo = +0 or hi = u + 0.0,
+//   so neither is -0. The dual reduced costs start from cost and subtract too, and each
+//   pair dual is clamped to at least +0.
+// Two values that differ only in the sign of zero compare equal, so the control flow is the
+// same. Each division has a nonzero divisor (the pivot, the ratio-test coefficient), so a
+// zero sign never becomes the sign of an infinity. Thus the radii, the duals and d are the
+// same bits as with the dense pass, and none of them is -0.
 #pragma once
 #include <array>
 #include <atomic>
@@ -87,14 +103,16 @@ inline bool is_half_integral_pivot(double piv) {
   return a == 0.5 || a == 1.0 || a == 2.0;
 }
 
-// The incremental pricing step for a basis change: d_j -= d_q * row_j for all j, where
-// row is the pivot row after the division by piv. Returns false if the half-integral
+// The incremental pricing step for a basis change: d_j -= d_q * row_j for each j in nz, the
+// nonzero columns of row. row is the pivot row after the division by piv. A zero column
+// changes nothing, because d never holds -0 (see "Signed zeros" above). The guard checks
+// only the updated d_j; each other d_j passed it before. Returns false if the half-integral
 // guard fails (piv or an updated d_j). Then the caller must stop the use of d.
-inline bool update_reduced_costs(std::vector<double>& d, const double* row, int q,
-                                 double piv) {
+inline bool update_reduced_costs(std::vector<double>& d, const double* row,
+                                 const std::vector<int>& nz, int q, double piv) {
   const double dq = d[q];
   int inexact = 0;
-  for (size_t j = 0; j < d.size(); ++j) {
+  for (const int j : nz) {
     d[j] -= dq * row[j];
     inexact |= !is_half_integral(d[j]);
   }
@@ -128,8 +146,8 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
   // Bounds and objective for every variable.
   std::vector<double> lo(N, 0.0), hi(N, 0.0), cost(N, 0.0);
   for (int i = 0; i < k; ++i) {
-    hi[i] = u[i];
-    cost[i] = 1.0;  // maximize sum of radii
+    hi[i] = u[i] + 0.0;  // + 0.0 changes a -0 bound to +0 (see "Signed zeros" above)
+    cost[i] = 1.0;       // maximize sum of radii
   }
   for (int p = 0; p < m; ++p) hi[k + p] = INF;  // slacks
 
@@ -151,7 +169,7 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     basis[p] = k + p;
     basisRow[k + p] = p;
     status[k + p] = 2;
-    xB[p] = rhs[p];  // structural vars at lower bound 0
+    xB[p] = rhs[p] + 0.0;  // structural vars at lower bound 0; + 0.0 as for hi
   }
 
   auto nonbasic_value = [&](int j) { return status[j] == 1 ? hi[j] : lo[j]; };
@@ -159,6 +177,8 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
   // Reduced costs d_j = cost_j - cost_B^T T_j. The slack basis has cost_B = 0, so d = cost.
   bool incremental = pricing == Pricing::Incremental;
   std::vector<double> d = cost;
+  std::vector<int> nz;  // the nonzero columns of the current pivot row
+  nz.reserve(N);
   int basis_changes = 0;  // counts pivots for the force_fallback_at test hook
 #ifdef CSQV_LP_VERIFY_PRICING
   long compares = 0, mismatches = 0;
@@ -261,14 +281,23 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
       continue;
     }
 
-    // Pivot: q enters the basis in leave_row; the old basic var leaves.
+    // Pivot: q enters the basis in leave_row; the old basic var leaves. The pivot row is
+    // sparse (about 3% nonzero at N=90), so divide only its nonzeros and keep their columns
+    // in nz. The d update and the elimination below skip the zero columns.
     const int leaving = basis[leave_row];
     const double piv = Tat(leave_row, q);
-    for (int j = 0; j < N; ++j) Tat(leave_row, j) /= piv;
+    double* const lrow = &Tat(leave_row, 0);
+    nz.clear();
+    for (int j = 0; j < N; ++j) {
+      if (lrow[j] != 0.0) {
+        lrow[j] /= piv;
+        nz.push_back(j);
+      }
+    }
     // A bound flip (above) does not change d. A basis change updates d with the divided
     // pivot row. If the guard fails, the rest of this solve uses the full recompute.
     ++basis_changes;
-    if (incremental && (!update_reduced_costs(d, &Tat(leave_row, 0), q, piv) ||
+    if (incremental && (!update_reduced_costs(d, lrow, nz, q, piv) ||
                         basis_changes == force_fallback_at)) {
       incremental = false;
       lp_pricing_fallbacks().fetch_add(1, std::memory_order_relaxed);
@@ -279,8 +308,8 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
       if (p == leave_row) continue;
       const double f = Tat(p, q);
       if (f == 0.0) continue;
-      for (int j = 0; j < N; ++j) Tat(p, j) -= f * Tat(leave_row, j);
-      xB[p] -= f * 0.0;  // xB already updated by the step above
+      double* const prow = &Tat(p, 0);
+      for (const int j : nz) prow[j] -= f * lrow[j];
     }
     basisRow[leaving] = -1;
     status[leaving] = (leave_to == 1) ? 1 : 0;
@@ -296,7 +325,7 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     else
       z[i] = nonbasic_value(i);
     if (z[i] < 0.0) z[i] = 0.0;
-    if (z[i] > u[i]) z[i] = u[i];
+    if (z[i] > hi[i]) z[i] = hi[i];
   }
 #ifdef CSQV_LP_VERIFY_PRICING
   lp_pricing_compares().fetch_add(compares, std::memory_order_relaxed);
