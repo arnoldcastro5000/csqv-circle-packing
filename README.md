@@ -101,6 +101,85 @@ The worker writes the best centers and a ready-to-submit `.pck` into `out_dir`, 
 from a saved champion on relaunch, and never regresses a saved file. `--record` is advisory
 only (a console gap and banner); the search never uses it.
 
+## The search path
+
+Each worker thread repeats a **restart** (one full attempt, from a starting arrangement to a
+local optimum). A restart runs these stages in order.
+
+1. **Pick the start.** A **warm restart** perturbs the thread's own best centers with small
+   Gaussian noise. This is a **basin-hopping** step (basin hopping = perturb the current best,
+   re-optimize, then keep the result only if it is better). It searches for **depth** (a better
+   optimum near the current one). The search picks a warm restart most of the time once a thread
+   has a best. A **cold restart** instead builds a fresh arrangement. In the default and
+   `--count` modes a cold restart cycles through four constructions: grid, jitter, hex, and
+   random. In `--spread` mode a **low-discrepancy sequence** (a number sequence whose points
+   spread evenly and never cluster) picks the construction family and its rotation, aspect, and
+   jitter, so each thread starts in a different region. Seven families are implemented (grid,
+   jitter, hex, random, phyllotaxis, Archimedean spiral, and concentric rings); the build
+   activates the first four by default.
+
+2. **growpush.** This stage relaxes the overlap (it grows the circles and pushes each
+   overlapping pair apart) until the arrangement is feasible and tight.
+
+3. **The exact-LP radii (`radii_lp`).** For the **fixed** centers, this stage solves a **linear
+   program** (an LP: it maximizes a linear objective under linear constraints). The LP gives each
+   circle its largest radius with no overlap and full containment. The LP is exact and cheap at
+   any `N`. So the search only moves the centers; the LP always assigns the best radii.
+
+4. **The penalty polish (`scalable_polish`).** This stage moves the centers to raise the radii
+   sum. It uses **L-BFGS** (a quasi-Newton optimizer: it approximates the curvature from recent
+   gradients) on a **penalty** objective (it adds a soft cost for any overlap). It runs a
+   **continuation ladder** (it solves an easy problem first, then repeats with a larger penalty
+   weight each round), so the overlap falls to near zero.
+
+5. **Bank the result.** If the polished sum beats the thread's best, the search saves it at once,
+   so no improvement is ever lost.
+
+6. **Basin bookkeeping (only in `--count` and `--spread`).** The search makes a **basin
+   fingerprint** (a hash of the converged optimum; a **basin** is the set of starts that flow to
+   one local optimum) and records it. The count of distinct fingerprints is the coverage metric.
+   In `--spread` mode only, a cold seed that re-descends a seen basin triggers an **escape**: a
+   **defect kick** (it removes the few smallest circles and reinserts them at the emptiest spots,
+   which changes the **contact graph**, the graph of which circles touch) fires up to three times,
+   to hop to an unseen basin.
+
+7. **The final squeeze (`center_polish_analytic`).** At the budget end the thread runs one
+   **projected gradient ascent** on the centers (projected = each step stays inside the box) that
+   maximizes the exact-LP radii sum. It uses the **LP dual** (the shadow prices the LP returns) as
+   the exact gradient, so one LP solve gives one exact step. This recovers the last ~1e-5 of sum
+   the penalty polish leaves. A single finished champion may also get the optional terminal
+   squeeze described above.
+
+Two modes control the coverage machinery. The default mode is a plain **multi-start** (many
+independent restarts). `--count` adds basin counting only. `--spread` adds the spread seeds, the
+de-duplication, and the escape.
+
+## Findings
+
+- **The LP dominates the run time.** A profile of a record-band run shows the exact-LP solve is
+  about 70% of all executed lines. Inside the LP, the **pricing** step is the hot spot (pricing =
+  the sweep over the non-basic variables that picks the next one to enter the basis on each
+  simplex iteration). The **pivot** update (it rewrites the tableau after each swap) is the next
+  cost. The penalty polish is far smaller, and the basin and escape bookkeeping is negligible. So
+  a faster LP is the fastest way to a better packing: more LP throughput means more restarts in
+  the same budget, which means wider coverage.
+
+- **Large `N` is throughput-bound.** At `N` above ~120 a single restart takes tens of seconds, so
+  few restarts finish per hour. The warm depth walk then barely engages, and the LP speed sets the
+  search rate.
+
+- **The warm walk finds the champions.** Most record packings come from a warm basin-hopping
+  refinement of a basin that a cold seed first found. The cold seed supplies the basin; the warm
+  walk deepens it.
+
+- **Cold spread seeds land in fresh basins.** The low-discrepancy spreading makes almost every
+  cold seed reach a new basin at the record band, so the escape rarely fires there. The spreading,
+  not the escape, gives `--spread` its coverage.
+
+- **`--count` and `--spread` trade depth for coverage.** `--count` often reaches the single better
+  basin at high `N`. `--spread` reaches more distinct basins. Each discovery README records which
+  mode found that `N`.
+
 ## Verifying a packing
 
 `tools/validate_pck.py` reads the radii **as written** in a `.pck` (it does not re-derive
