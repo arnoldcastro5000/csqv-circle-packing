@@ -103,7 +103,8 @@ inline void spread_base(int n, int family, Rng& g, std::vector<double>& bx,
   }
 }
 
-constexpr int kSpreadFamilies = 7;
+// set to 5, 6 or 7 to enable experimental families. 4 is the baseline.
+constexpr int kSpreadFamilies = 4;
 
 // Build a spread cold construction. `k` is this thread's global low-discrepancy index (use
 // disjoint per-thread slices, e.g. k = base + thread + draw * num_threads). The low-discrepancy
