@@ -7,10 +7,9 @@
 // a long unattended run never loses a record, and a relaunch resumes from it. A cross of
 // the live record prints *** RECORD BEATEN ***.
 //
-// The trusted Python verifier stays the source of truth: re-check any champion with
-//   PYTHONPATH=. python3 cpp/tools/verify_champion.py <this-worker-output.txt>
-// for the trusted-frame score, and validate the emitted file as written with
-//   python3 cpp/tools/validate_pck.py <this-worker-output.pck>
+// The independent Python validator stays the source of truth: validate the emitted file as
+// written with
+//   python3 tools/validate_pck.py <this-worker-output.pck>
 // before treating it as a record or submitting it.
 //
 // At the end of a run it prints the pre-squeeze best, runs a one-shot terminal jamming seal
@@ -486,8 +485,8 @@ int main(int argc, char** argv) {
     std::printf("N=%d: final=%.9f record=%.9f gap=%+.5f%%%s\n", sh.n, final_val, sh.record,
                 csqv::gap_percent(sh.record, final_val), cross);
   } else {
-    std::printf("N=%d: final=%.9f (no --record supplied; score with verify_champion.py, "
-                "validate the .pck with validate_pck.py)\n",
+    std::printf("N=%d: final=%.9f (no --record supplied; validate the .pck with "
+                "python3 tools/validate_pck.py)\n",
                 sh.n, final_val);
   }
   if (sh.instrumented())

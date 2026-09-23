@@ -5,8 +5,8 @@
 // *** RECORD BEATEN *** banner). Packomania records move daily, so the worker does NOT
 // hardcode one: the operator supplies the live value at launch with `--record <sum>`, and
 // when it is absent the worker simply omits the gap rather than compare against a stale
-// constant. The Python verifier (cpp/tools/verify_champion.py) stays the authority on
-// whether a packing actually beats the live record.
+// constant. The Python validator (tools/validate_pck.py) stays the authority on
+// whether a packing is feasible as written, and so on whether it beats the live record.
 #pragma once
 #include <cmath>
 #include <cstdlib>
