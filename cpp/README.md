@@ -89,7 +89,7 @@ strict IEEE NaN/inf handling.
 
 ```sh
 # csqv_worker <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp] [--record <live_sum>]
-cpp/build/csqv_worker 121 3600 0 12 results-cpp "Arnold Castro" 15 --record 5.797468812113
+cpp/build/csqv_worker 121 3600 0 12 results-cpp "Arnold Castro" 15 --record 5.802127855949
 ```
 
 - `threads` independent workers use seeds `base_seed .. base_seed+threads-1`. Use your
@@ -103,7 +103,8 @@ cpp/build/csqv_worker 121 3600 0 12 results-cpp "Arnold Castro" 15 --record 5.79
 - `--record <live_sum>` is OPTIONAL and advisory only. The search never uses it; it just
   labels the console with the gap to that value and prints `*** RECORD BEATEN ***` once the
   sum clears it. Records move daily, so the worker does NOT hardcode one: pass the live
-  best-known from `https://www.packomania.com/csqv/txt/sumradii.txt`. Without it the worker
+  best-known from `https://www.packomania.com/csqv/txt/sumradii.txt` (the example value is
+  the live N=121 best-known on 2026-09-23). Without it the worker
   omits the gap and never claims a record; `tools/validate_pck.py` remains the
   authority on whether a finished packing is feasible and beats the live record.
 - Each worker writes `results-cpp/n<N>-s<seed>-best.txt` (centered frame) on every

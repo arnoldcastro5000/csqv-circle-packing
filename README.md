@@ -82,6 +82,14 @@ Key idea: for **fixed centers**, the optimal radii are the solution of a linear 
 (cheap and exact at any N). All the difficulty is in the **center arrangement**, so the
 search explores center arrangements and the LP always assigns the best radii.
 
+### Requirements
+
+- A C++17 compiler (g++ or clang; MinGW-w64 on Windows) and `make` or CMake. The worker has
+  no other dependencies.
+- Python 3 with NumPy for `tools/validate_pck.py`. SciPy is also necessary for the terminal
+  squeeze (`problems/csqv/terminal_squeeze.py`), and pytest for `tests/`:
+  `pip install numpy scipy pytest`.
+
 ### Build
 
 ```sh
@@ -94,12 +102,14 @@ make -C cpp
 
 ```sh
 # csqv_worker <n> <budget_s> <base_seed> [threads] [out_dir] [author] [pck_dp] [--record <live_sum>]
-cpp/build/csqv_worker 121 3600 0 8 results-cpp "Your Name" 15 --record 5.797468812113
+cpp/build/csqv_worker 121 3600 0 8 results-cpp "Your Name" 15 --record 5.802127855949
 ```
 
 The worker writes the best centers and a ready-to-submit `.pck` into `out_dir`, resumes
 from a saved champion on relaunch, and never regresses a saved file. `--record` is advisory
-only (a console gap and banner); the search never uses it.
+only (a console gap and banner); the search never uses it. The example value is the live N=121
+best-known on 2026-09-23. Records move, so take the current value from
+`https://www.packomania.com/csqv/txt/sumradii.txt`.
 
 ## The search path
 
