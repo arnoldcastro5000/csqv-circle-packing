@@ -43,14 +43,18 @@ $(BUILD)/csqv_spread_test: csqv/spread_test.cpp csqv/spread.hpp csqv/search.hpp 
 $(BUILD)/csqv_general_lp_test: csqv/general_lp_test.cpp csqv/general_lp.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/general_lp_test.cpp -o $@
 
+$(BUILD)/csqv_lp_test: csqv/lp_test.cpp csqv/lp.hpp csqv/search.hpp csqv/benchmark.hpp csqv/geometry.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/lp_test.cpp -o $@
+
 $(BUILD)/csqv_jam_slp_test: csqv/jam_slp_test.cpp csqv/jam_slp.hpp csqv/general_lp.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/jam_slp_test.cpp -o $@
 
 # Build and run the unit tests (save: atomic+monotonic, no leak; report: --record flag;
-# center_polish: monotone exact-LP center squeeze; fingerprint: basin hash; spread: seed spreading).
+# center_polish: monotone exact-LP center squeeze; fingerprint: basin hash; spread: seed spreading;
+# lp: incremental reduced-cost pricing is bit-identical to the full recompute).
 test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_polish_test \
       $(BUILD)/csqv_fingerprint_test $(BUILD)/csqv_spread_test $(BUILD)/csqv_general_lp_test \
-      $(BUILD)/csqv_jam_slp_test $(BUILD)/csqv_penalty_prefilter_test
+      $(BUILD)/csqv_jam_slp_test $(BUILD)/csqv_penalty_prefilter_test $(BUILD)/csqv_lp_test
 	$(BUILD)/csqv_save_test
 	$(BUILD)/csqv_report_test
 	$(BUILD)/csqv_center_polish_test
@@ -59,6 +63,7 @@ test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_pol
 	$(BUILD)/csqv_spread_test
 	$(BUILD)/csqv_general_lp_test
 	$(BUILD)/csqv_jam_slp_test
+	$(BUILD)/csqv_lp_test
 
 clean:
 	rm -rf $(BUILD)

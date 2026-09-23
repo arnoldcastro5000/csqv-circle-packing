@@ -9,8 +9,22 @@
 //
 // r = 0 is always feasible (distances are positive), so the simplex starts from a
 // trivial feasible basis (all radii at their lower bound, slacks basic); no phase 1.
+//
+// Pricing is INCREMENTAL. A basis of this LP holds only edge-vertex incidence columns and
+// slack columns. So the tableau B^-1 [A I] is half-integral: each entry is a multiple of
+// 1/2 (Nemhauser-Trotter 1975; Balinski 1965). A measurement of 1e10 entries at N=90
+// and N=121 found |entry| <= 2. So each pivot is +-1/2,
+// +-1 or +-2, and each tableau and reduced-cost operation is exact in IEEE-754.
+// Because of this, each pivot updates the reduced-cost row (d_j -= d_q * T(leave, j)). A
+// full recompute from the tableau is not necessary. The update gives the same values as
+// the recompute; only the sign of an exact zero in d can differ. The pricing ignores that
+// sign, and d is internal, so the radii and the duals stay bit-identical.
+// A guard checks each pivot and each updated d_j. It does not check every tableau entry.
+// If the guard fails, the solve uses the full recompute (the original pricing) from that
+// pivot to its end.
 #pragma once
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -19,7 +33,51 @@
 
 namespace csqv {
 
+// The number of solves where the half-integral guard failed and the pricing changed to the
+// full recompute. For this LP it must stay 0. A count above 0 means the LP form changed.
+inline std::atomic<long>& lp_pricing_fallbacks() {
+  static std::atomic<long> count{0};
+  return count;
+}
+
 namespace detail {
+
+// Recompute is the original pricing: a full dot product per column per iteration. It is
+// the guard's fallback, and the unit test compares the incremental pricing against it.
+enum class Pricing { Incremental, Recompute };
+
+// True if v is an exact multiple of 1/2 and |2v| < 2^51. NaN and infinity give false.
+// The test rounds 2v to an integer: adding and then subtracting 1.5 * 2^52 does this in
+// exact IEEE-754 arithmetic. If the rounding changes nothing, 2v is an integer.
+// The test has no branch, so the update loop that calls it vectorizes. (std::floor is a
+// library call at the default x86-64 target; a guard with it took about 3x more time.)
+inline bool is_half_integral(double v) {
+  const double h = 2.0 * v;
+  const double kRound = 6755399441055744.0;              // 1.5 * 2^52
+  const bool small = std::fabs(h) < 2251799813685248.0;  // 2^51
+  const bool whole = (h + kRound) - kRound == h;
+  return small & whole;  // bitwise, not &&: a branch would stop the vectorization
+}
+
+// True if a pivot keeps the tableau exact: division by +-1/2, +-1 or +-2 is exact.
+inline bool is_half_integral_pivot(double piv) {
+  const double a = std::fabs(piv);
+  return a == 0.5 || a == 1.0 || a == 2.0;
+}
+
+// The incremental pricing step for a basis change: d_j -= d_q * row_j for all j, where
+// row is the pivot row after the division by piv. Returns false if the half-integral
+// guard fails (piv or an updated d_j). Then the caller must stop the use of d.
+inline bool update_reduced_costs(std::vector<double>& d, const double* row, int q,
+                                 double piv) {
+  const double dq = d[q];
+  int inexact = 0;
+  for (size_t j = 0; j < d.size(); ++j) {
+    d[j] -= dq * row[j];
+    inexact |= !is_half_integral(d[j]);
+  }
+  return !inexact && is_half_integral_pivot(piv);
+}
 
 // Solve  max sum(z_i)  s.t.  z_a + z_b <= rhs  for each pair (a,b),  0 <= z_i <= u_i.
 // Bounded-variable primal simplex on the standard form  A z + s = rhs,  s >= 0.
@@ -37,7 +95,8 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
                                             const std::vector<std::array<int, 2>>& pairs,
                                             const std::vector<double>& rhs,
                                             std::vector<double>* pair_dual = nullptr,
-                                            std::vector<double>* struct_rc = nullptr) {
+                                            std::vector<double>* struct_rc = nullptr,
+                                            Pricing pricing = Pricing::Incremental) {
   const int m = static_cast<int>(pairs.size());
   const int N = k + m;
   const double INF = std::numeric_limits<double>::infinity();
@@ -74,6 +133,10 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
 
   auto nonbasic_value = [&](int j) { return status[j] == 1 ? hi[j] : lo[j]; };
 
+  // Reduced costs d_j = cost_j - cost_B^T T_j. The slack basis has cost_B = 0, so d = cost.
+  bool incremental = pricing == Pricing::Incremental;
+  std::vector<double> d = cost;
+
   const int max_iter = 50 * (N + 10);
   for (int iter = 0; iter < max_iter; ++iter) {
     // Pricing: reduced cost d_j = cost_j - cost_B^T T_j. Pick the best improving var.
@@ -83,9 +146,14 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     double best = eps;
     for (int j = 0; j < N; ++j) {
       if (status[j] == 2) continue;
-      double dj = cost[j];
-      for (int p = 0; p < m; ++p) {
-        if (cost[basis[p]] != 0.0) dj -= cost[basis[p]] * Tat(p, j);
+      double dj;
+      if (incremental) {
+        dj = d[j];
+      } else {
+        dj = cost[j];
+        for (int p = 0; p < m; ++p) {
+          if (cost[basis[p]] != 0.0) dj -= cost[basis[p]] * Tat(p, j);
+        }
       }
       int dir = 0;
       if (status[j] == 0 && dj > eps)
@@ -162,6 +230,12 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     const int leaving = basis[leave_row];
     const double piv = Tat(leave_row, q);
     for (int j = 0; j < N; ++j) Tat(leave_row, j) /= piv;
+    // A bound flip (above) does not change d. A basis change updates d with the divided
+    // pivot row. If the guard fails, the rest of this solve uses the full recompute.
+    if (incremental && !update_reduced_costs(d, &Tat(leave_row, 0), q, piv)) {
+      incremental = false;
+      lp_pricing_fallbacks().fetch_add(1, std::memory_order_relaxed);
+    }
     const double entering_val = nonbasic_value(q) + delta;
     xB[leave_row] = entering_val;
     for (int p = 0; p < m; ++p) {

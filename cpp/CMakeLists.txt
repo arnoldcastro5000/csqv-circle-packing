@@ -79,3 +79,9 @@ add_test(NAME csqv_general_lp_test COMMAND csqv_general_lp_test)
 add_executable(csqv_jam_slp_test csqv/jam_slp_test.cpp)
 target_include_directories(csqv_jam_slp_test PRIVATE csqv)
 add_test(NAME csqv_jam_slp_test COMMAND csqv_jam_slp_test)
+
+# lp.hpp::detail::solve_reduced_lp: incremental reduced-cost pricing is bit-identical to the
+# full recompute (radii and duals), and the half-integral guard never trips on real LPs.
+add_executable(csqv_lp_test csqv/lp_test.cpp)
+target_include_directories(csqv_lp_test PRIVATE csqv)
+add_test(NAME csqv_lp_test COMMAND csqv_lp_test)

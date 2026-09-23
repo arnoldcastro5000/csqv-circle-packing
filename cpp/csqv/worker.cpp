@@ -492,5 +492,11 @@ int main(int argc, char** argv) {
   if (sh.instrumented())
     std::printf("N=%d: distinct_basins=%ld spread=%s (the A/B coverage metric)\n", sh.n,
                 sh.distinct_basins(), sh.spread_mode ? "on" : "off");
+  // If the half-integral tableau invariant fails, the radii-LP guard (lp.hpp) changes to
+  // the slow full pricing. The result stays correct; only the speed decreases.
+  if (const long fallbacks = csqv::lp_pricing_fallbacks().load(); fallbacks > 0)
+    std::printf("N=%d: WARNING radii-LP pricing fell back to the full recompute in %ld solves "
+                "(half-integral guard tripped)\n",
+                sh.n, fallbacks);
   return 0;
 }
