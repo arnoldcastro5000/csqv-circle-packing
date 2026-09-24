@@ -25,8 +25,10 @@ FLAGS_NOW := $(strip $(CXX) $(CXXFLAGS))
 ifneq ($(strip $(file <$(FLAGS_STAMP))),$(FLAGS_NOW))
 .PHONY: $(FLAGS_STAMP)
 endif
+# make -n also expands each recipe, and $(file) writes during the expansion. So a dry run
+# (n in the first word of MAKEFLAGS) skips the write.
 $(FLAGS_STAMP): | $(BUILD)
-	$(file >$@,$(FLAGS_NOW))
+	$(if $(findstring n,$(firstword -$(MAKEFLAGS))),,$(file >$@,$(FLAGS_NOW)))
 
 .PHONY: all clean test bench
 all: $(BUILD)/csqv_worker $(BUILD)/csqv_check $(BUILD)/csqv_squeeze_check
