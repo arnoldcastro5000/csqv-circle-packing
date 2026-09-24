@@ -50,6 +50,19 @@
 // - The division of the pivot row changes only the leaving row, and the elimination skips
 //   that row. So the listed values of the other rows are still column q at the elimination.
 //
+// Entering pick. The pricing scan reads the status and d_j of all N columns in each
+// iteration. But a basis change updates d only at the nonzero columns of the pivot row, and
+// only q and the leaving variable change status (only q at a bound flip). So the incremental
+// pricing keeps one key per column: the gain |d_j| of an eligible column, else 0. Each
+// iteration updates the keys of the changed columns only. The pick is the largest key, the
+// smallest j on a tie. This is the column of the scan, because the scan also takes the
+// largest gain above eps and changes its pick only for a strictly larger gain.
+// A key holds the bits of the gain as an int64. For doubles >= +0, the int64 order is the
+// order of the values, and two equal values have equal bits: std::fabs never gives -0, and d
+// holds no NaN (the guard rejects NaN). The compiler vectorizes an int64 max. It does not
+// vectorize a double max without fast-math, because that max must keep the order of a NaN.
+// The Bland phase, the full recompute and the CSQV_LP_VERIFY_PRICING build use the scan.
+//
 // Tableau buffer. The dense tableau is large (up to about 2.5 MB at N=121), and the worker
 // solves more than a thousand LPs per second. A new heap block per solve costs a page fault
 // per page on a heap that returns large freed blocks to the OS: the Windows heap does, glibc
@@ -63,6 +76,8 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <limits>
 #include <vector>
 
@@ -104,6 +119,16 @@ inline std::atomic<long>& lp_pricing_mismatches() {
   static std::atomic<long> count{0};
   return count;
 }
+// The same check for the entering pick: at each pricing that can use the keys, the solve
+// also computes the pick from the keys and counts the picks and the mismatches with the scan.
+inline std::atomic<long>& lp_pricing_picks() {
+  static std::atomic<long> count{0};
+  return count;
+}
+inline std::atomic<long>& lp_pricing_pick_mismatches() {
+  static std::atomic<long> count{0};
+  return count;
+}
 #endif
 
 // True if v is an exact multiple of 1/2 and |2v| < 2^51. NaN and infinity give false.
@@ -140,6 +165,30 @@ inline bool update_reduced_costs(std::vector<double>& d, const double* row,
     inexact |= !is_half_integral(d[j]);
   }
   return !inexact && is_half_integral_pivot(piv);
+}
+
+// The pricing key of a column (see "Entering pick" above): the gain |d_j| as int64 bits if
+// the column is eligible, else 0. A column is eligible if a move off its bound improves the
+// objective by more than eps: d_j > eps at the lower bound (status 0), d_j < -eps at the
+// upper bound (status 1). A basic column (status 2) is not eligible.
+inline int64_t pricing_key(int status, double dj, double eps) {
+  const bool eligible = (status == 0 && dj > eps) || (status == 1 && dj < -eps);
+  const double gain = eligible ? std::fabs(dj) : 0.0;
+  int64_t key;
+  std::memcpy(&key, &gain, sizeof key);
+  return key;
+}
+
+// The entering column from the keys: the largest key, the smallest j on a tie. Returns -1 if
+// all keys are 0 (no column is eligible). The first pass finds the largest key, the second
+// pass finds its first column. Both loops vectorize.
+inline int pick_entering(const int64_t* key, int n) {
+  int64_t top = 0;
+  for (int j = 0; j < n; ++j) top = key[j] > top ? key[j] : top;
+  if (top == 0) return -1;
+  for (int j = 0; j < n; ++j)
+    if (key[j] == top) return j;
+  return -1;  // not reached: some key equals top
 }
 
 // The tableau buffer of the calling thread (see "Tableau buffer" above).
@@ -207,6 +256,10 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
   // Reduced costs d_j = cost_j - cost_B^T T_j. The slack basis has cost_B = 0, so d = cost.
   bool incremental = pricing == Pricing::Incremental;
   std::vector<double> d = cost;
+  // The pricing keys (see "Entering pick" above). Only the incremental pricing uses them.
+  std::vector<int64_t> key(N, 0);
+  if (incremental)
+    for (int j = 0; j < N; ++j) key[j] = pricing_key(status[j], d[j], eps);
   std::vector<int> nz;  // the nonzero columns of the current pivot row
   nz.reserve(N);
   struct ColEntry {
@@ -217,7 +270,7 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
   col.reserve(m);
   int basis_changes = 0;  // counts pivots for the force_fallback_at test hook
 #ifdef CSQV_LP_VERIFY_PRICING
-  long compares = 0, mismatches = 0;
+  long compares = 0, mismatches = 0, picks = 0, pick_mismatches = 0;
 #endif
 
   const int max_iter = 50 * (N + 10);
@@ -227,44 +280,60 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     const bool bland = iter > 20 * (N + 10);
     int q = -1, qdir = 0;
     double best = eps;
-    for (int j = 0; j < N; ++j) {
-      if (status[j] == 2) continue;
-      double dj;
-      if (incremental) {
-        dj = d[j];
 #ifdef CSQV_LP_VERIFY_PRICING
-        double rj = cost[j];
-        for (int p = 0; p < m; ++p) {
-          if (cost[basis[p]] != 0.0) rj -= cost[basis[p]] * Tat(p, j);
-        }
-        ++compares;
-        if (!(rj == dj)) ++mismatches;  // == ignores the sign of an exact zero
+    const bool use_keys = false;  // the scan picks; the check below compares the key pick
+#else
+    const bool use_keys = incremental && !bland;
 #endif
-      } else {
-        dj = cost[j];
-        for (int p = 0; p < m; ++p) {
-          if (cost[basis[p]] != 0.0) dj -= cost[basis[p]] * Tat(p, j);
+    if (use_keys) {
+      q = pick_entering(key.data(), N);
+      if (q >= 0) qdir = status[q] == 0 ? +1 : -1;
+    } else {
+      for (int j = 0; j < N; ++j) {
+        if (status[j] == 2) continue;
+        double dj;
+        if (incremental) {
+          dj = d[j];
+#ifdef CSQV_LP_VERIFY_PRICING
+          double rj = cost[j];
+          for (int p = 0; p < m; ++p) {
+            if (cost[basis[p]] != 0.0) rj -= cost[basis[p]] * Tat(p, j);
+          }
+          ++compares;
+          if (!(rj == dj)) ++mismatches;  // == ignores the sign of an exact zero
+#endif
+        } else {
+          dj = cost[j];
+          for (int p = 0; p < m; ++p) {
+            if (cost[basis[p]] != 0.0) dj -= cost[basis[p]] * Tat(p, j);
+          }
         }
-      }
-      int dir = 0;
-      if (status[j] == 0 && dj > eps)
-        dir = +1;  // at lower, raising improves
-      else if (status[j] == 1 && dj < -eps)
-        dir = -1;  // at upper, lowering improves
-      else
-        continue;
-      if (bland) {
-        q = j;
-        qdir = dir;
-        break;
-      }
-      const double gain = std::fabs(dj);
-      if (gain > best) {
-        best = gain;
-        q = j;
-        qdir = dir;
+        int dir = 0;
+        if (status[j] == 0 && dj > eps)
+          dir = +1;  // at lower, raising improves
+        else if (status[j] == 1 && dj < -eps)
+          dir = -1;  // at upper, lowering improves
+        else
+          continue;
+        if (bland) {
+          q = j;
+          qdir = dir;
+          break;
+        }
+        const double gain = std::fabs(dj);
+        if (gain > best) {
+          best = gain;
+          q = j;
+          qdir = dir;
+        }
       }
     }
+#ifdef CSQV_LP_VERIFY_PRICING
+    if (incremental && !bland) {
+      ++picks;
+      if (pick_entering(key.data(), N) != q) ++pick_mismatches;
+    }
+#endif
     if (q < 0) break;  // optimal
 
     // Ratio test. Entering var changes by delta = qdir * t, t >= 0.
@@ -320,6 +389,7 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     if (leave_row < 0) {
       // Bound flip: q moves to its opposite bound, stays nonbasic.
       status[q] = (status[q] == 0) ? 1 : 0;
+      if (incremental) key[q] = pricing_key(status[q], d[q], eps);
       continue;
     }
 
@@ -357,6 +427,10 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     basis[leave_row] = q;
     basisRow[q] = leave_row;
     status[q] = 2;
+    // The changed d_j and the two changed statuses are all in nz: the pivot row is piv != 0
+    // at q, and 1 at the leaving variable (a basic column is a unit column).
+    if (incremental)
+      for (const int j : nz) key[j] = pricing_key(status[j], d[j], eps);
   }
 
   std::vector<double> z(k, 0.0);
@@ -371,6 +445,8 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
 #ifdef CSQV_LP_VERIFY_PRICING
   lp_pricing_compares().fetch_add(compares, std::memory_order_relaxed);
   lp_pricing_mismatches().fetch_add(mismatches, std::memory_order_relaxed);
+  lp_pricing_picks().fetch_add(picks, std::memory_order_relaxed);
+  lp_pricing_pick_mismatches().fetch_add(pick_mismatches, std::memory_order_relaxed);
 #endif
 
   // Optimal-basis duals (ticket 40). Reduced cost of column j is cost_j - cost_B^T (B^-1 A)_j;

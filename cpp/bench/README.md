@@ -31,7 +31,7 @@ cpp/bench/gate.sh <base-ref> [out_dir]
 | G1 | the worker | The startup benchmark data lines (the radii hashes) are identical. |
 | G2 | `trajectory_hash.cpp` | The hash of construct, growpush, the LP duals and the center polish is identical in base, head and fb. |
 | G3 | the worker + `compare_runs.py` | The per-restart `best` events of each seed are identical up to the shorter run's restart count. |
-| Pricing | `pricing_check.cpp` | Each incremental reduced cost equals the full recompute (`mismatches=0`), and the guard never fails (`fallbacks=0`). |
+| Pricing | `pricing_check.cpp` | Each incremental reduced cost equals the full recompute (`mismatches=0`), the entering pick from the pricing keys equals the pick of the scan (`pick_mismatches=0`), and the guard never fails (`fallbacks=0`). |
 | G4 | `make test`, `make accept` | Both pass (the script skips `accept` if the Makefile has no such target). |
 
 The speed section (not a gate) prints the `lp_bench` time and the 30 s worker restart count,

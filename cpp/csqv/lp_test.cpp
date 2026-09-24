@@ -24,6 +24,11 @@
 //      both paths share (the ratio test, its tie-break, the elimination) passes them. This
 //      check catches it. A bit-identical speed change must keep the value. A deliberate
 //      change of the LP output records the new value that the failure message prints.
+//   8) ENTERING PICK: the incremental pricing keeps one key per column (the gain of an
+//      eligible column, else 0) and picks the column with the largest key, the smallest j on
+//      a tie. On random half-integral reduced costs with many ties, this pick is the column
+//      of the full scan: the largest |d_j| > eps of an eligible column, the smallest j on a
+//      tie.
 // Build: see cpp/CMakeLists.txt (target csqv_lp_test) or cpp/Makefile.
 #include <algorithm>
 #include <array>
@@ -32,6 +37,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -188,6 +194,21 @@ static uint64_t golden_hash() {
   return csqv::hash_doubles(out);
 }
 
+// The entering column of the full pricing scan (the rule of solve_reduced_lp): the eligible
+// column with the largest |d_j| > eps; a later column wins only with a strictly larger gain.
+static int scan_pick(const std::vector<int>& status, const std::vector<double>& d, double eps) {
+  int q = -1;
+  double best = eps;
+  for (size_t j = 0; j < d.size(); ++j) {
+    const bool eligible = (status[j] == 0 && d[j] > eps) || (status[j] == 1 && d[j] < -eps);
+    if (eligible && std::fabs(d[j]) > best) {
+      best = std::fabs(d[j]);
+      q = static_cast<int>(j);
+    }
+  }
+  return q;
+}
+
 int main() {
   // 1 + 2 on the startup benchmark configurations (random centers, N up to 60).
   {
@@ -338,6 +359,53 @@ int main() {
       std::fprintf(stderr, "  golden hash 0x%016llxULL, expected 0x%016llxULL\n",
                    static_cast<unsigned long long>(h), static_cast<unsigned long long>(kGolden));
     CHECK(h == kGolden, "the LP outputs keep the recorded bits");
+  }
+
+  // 8: the entering pick from the keys. Hand-made keys first, then random columns.
+  {
+    using csqv::detail::pick_entering;
+    using csqv::detail::pricing_key;
+    const double eps = 1e-12;
+    CHECK(pricing_key(0, 1.5, eps) == pricing_key(1, -1.5, eps), "the key is the gain");
+    CHECK(pricing_key(0, -1.0, eps) == 0 && pricing_key(1, 1.0, eps) == 0,
+          "a column that moves the wrong way has key 0");
+    CHECK(pricing_key(2, 1.0, eps) == 0 && pricing_key(2, -1.0, eps) == 0,
+          "a basic column has key 0");
+    CHECK(pricing_key(0, 0.0, eps) == 0 && pricing_key(1, -0.0, eps) == 0 &&
+              pricing_key(0, 1e-13, eps) == 0 && pricing_key(1, -1e-13, eps) == 0,
+          "a gain of eps or less has key 0");
+    CHECK(pricing_key(0, 0.5, eps) < pricing_key(0, 1.0, eps) &&
+              pricing_key(0, 1.0, eps) < pricing_key(1, -2.0, eps) &&
+              pricing_key(1, -2.0, eps) < pricing_key(0, 1e300, eps),
+          "the keys have the order of the gains");
+    const std::vector<int64_t> none = {0, 0, 0};
+    CHECK(pick_entering(none.data(), 3) == -1, "no eligible column gives -1");
+    CHECK(pick_entering(none.data(), 0) == -1, "no column gives -1");
+    const int64_t one = pricing_key(0, 1.0, eps), two = pricing_key(0, 2.0, eps);
+    const std::vector<int64_t> tie = {0, one, 0, one, one};
+    CHECK(pick_entering(tie.data(), 5) == 1, "a tie picks the smallest column");
+    const std::vector<int64_t> later = {one, 0, one, two, two, one};
+    CHECK(pick_entering(later.data(), 6) == 3, "a larger gain wins; its tie picks the first");
+
+    // Random columns: status 0, 1 or 2 and reduced costs k/2 with |k| <= 6, so most gains
+    // tie. The raw mt19937_64 stream with a fixed map gives the same cases everywhere.
+    std::mt19937_64 rng(20260924);
+    int agree = 0, cases = 0;
+    for (int c = 0; c < 20000; ++c) {
+      const int n = static_cast<int>(rng() % 300);
+      std::vector<int> status(n);
+      std::vector<double> d(n);
+      std::vector<int64_t> keys(n);
+      for (int j = 0; j < n; ++j) {
+        status[j] = static_cast<int>(rng() % 3);
+        d[j] = (static_cast<int>(rng() % 13) - 6) * 0.5;
+        keys[j] = pricing_key(status[j], d[j], eps);
+      }
+      agree += pick_entering(keys.data(), n) == scan_pick(status, d, eps);
+      ++cases;
+    }
+    if (agree != cases) std::fprintf(stderr, "  pick differs in %d of %d cases\n", cases - agree, cases);
+    CHECK(agree == cases, "the key pick is the column of the full scan");
   }
 
   if (g_failures == 0) std::printf("lp_test: all checks passed\n");

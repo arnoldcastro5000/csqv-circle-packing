@@ -1,7 +1,8 @@
 // In-loop pricing check. Build with -DCSQV_LP_VERIFY_PRICING: then each pricing step in
-// solve_reduced_lp compares the incremental reduced cost d_j with the full recompute. This
-// driver runs the worker's LP calls (construct, growpush, center_gradient,
-// center_polish_analytic) and prints the counts. The gate: mismatches=0 and fallbacks=0.
+// solve_reduced_lp compares the incremental reduced cost d_j with the full recompute, and the
+// entering pick from the pricing keys with the pick of the scan. This driver runs the
+// worker's LP calls (construct, growpush, center_gradient, center_polish_analytic) and prints
+// the counts. The gate: mismatches=0, pick_mismatches=0 (with picks > 0) and fallbacks=0.
 //
 // Usage: pricing_check <n> <seeds>
 #include <cstdio>
@@ -32,8 +33,12 @@ int main(int argc, char** argv) {
     csqv::center_polish_analytic(x, y, r, n, 3);
   }
   const long mismatches = csqv::detail::lp_pricing_mismatches().load();
+  const long picks = csqv::detail::lp_pricing_picks().load();
+  const long pick_mismatches = csqv::detail::lp_pricing_pick_mismatches().load();
   const long fallbacks = csqv::lp_pricing_fallbacks().load();
-  std::printf("n=%d seeds=%d compares=%ld mismatches=%ld fallbacks=%ld\n", n, seeds,
-              csqv::detail::lp_pricing_compares().load(), mismatches, fallbacks);
-  return mismatches == 0 && fallbacks == 0 ? 0 : 1;
+  std::printf("n=%d seeds=%d compares=%ld mismatches=%ld picks=%ld pick_mismatches=%ld "
+              "fallbacks=%ld\n",
+              n, seeds, csqv::detail::lp_pricing_compares().load(), mismatches, picks,
+              pick_mismatches, fallbacks);
+  return mismatches == 0 && picks > 0 && pick_mismatches == 0 && fallbacks == 0 ? 0 : 1;
 }

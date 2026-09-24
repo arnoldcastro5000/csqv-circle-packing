@@ -15,7 +15,8 @@
 #   G1 + G3    worker runs (1 thread): the startup benchmark lines are identical, and the
 #              per-restart "best" events extend the base sequence exactly.
 #   G2         trajectory_hash (radii, duals, center polish): base == head == fb.
-#   pricing    pricing_check: each incremental reduced cost equals the full recompute.
+#   pricing    pricing_check: each incremental reduced cost equals the full recompute, and
+#              the entering pick from the pricing keys equals the pick of the scan.
 #   G4         make test and make accept in this tree (accept only if the target exists).
 # Speed (not a gate): lp_bench and a 30 s worker run per N, base vs head, one job at a time.
 #
@@ -133,7 +134,7 @@ for n in $NS; do
     fail "G2 N=$n: base '${hashes[0]}' head '${hashes[1]}' fb '${hashes[2]}'"
 done
 
-echo "== pricing check (incremental d_j vs the full recompute)"
+echo "== pricing check (incremental d_j vs the full recompute; key pick vs the scan)"
 for n in 30 90 143; do
   if ! "$OUT/bin/pricing_check" "$n" 4 | sed 's/^/  /'; then fail "pricing check N=$n"; fi
 done
