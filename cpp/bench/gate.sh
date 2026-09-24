@@ -26,11 +26,16 @@
 #   GATE_JOBS     parallel worker runs             [2]
 #   GATE_G2_SEEDS trajectory_hash seeds per N      [20]
 #   GATE_SPEED    1 = run the speed section        [1]
+#   GATE_BASE_FLAGS  compiler flags for base       [the cpp/Makefile default, below]
+#   GATE_HEAD_FLAGS  compiler flags for head + fb  [the cpp/Makefile default, below]
 #   CXX           compiler                         [g++]
+# The default flags are "-O3 -funroll-loops -std=c++17 -march=native -ffp-contract=off", as in
+# cpp/Makefile. To gate a flag change, give the old flags to base, for example:
+#   GATE_BASE_FLAGS="-O3 -funroll-loops -std=c++17" cpp/bench/gate.sh HEAD
 set -euo pipefail
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  sed -n '2,31p' "$0"
+  sed -n '2,34p' "$0"
   exit 2
 fi
 
@@ -46,7 +51,9 @@ JOBS=${GATE_JOBS:-2}
 G2_SEEDS=${GATE_G2_SEEDS:-20}
 SPEED=${GATE_SPEED:-1}
 CXX=${CXX:-g++}
-FLAGS=(-O3 -funroll-loops -std=c++17)
+DEFAULT_FLAGS="-O3 -funroll-loops -std=c++17 -march=native -ffp-contract=off"
+read -r -a BASE_FLAGS <<< "${GATE_BASE_FLAGS:-$DEFAULT_FLAGS}"
+read -r -a HEAD_FLAGS <<< "${GATE_HEAD_FLAGS:-$DEFAULT_FLAGS}"
 SEALED_90=98.374190007874
 SEALED_143=49.910861299027
 
@@ -56,6 +63,8 @@ git -C "$REPO" worktree add --detach "$BASE_TREE" "$BASE_REF" > /dev/null
 trap 'git -C "$REPO" worktree remove --force "$BASE_TREE"' EXIT
 echo "base: $BASE_REF = $(git -C "$BASE_TREE" rev-parse --short HEAD)"
 echo "head: working tree at $(git -C "$REPO" rev-parse --short HEAD)$([[ -z $(git -C "$REPO" status --porcelain -- cpp) ]] || echo ' + local edits')"
+echo "base flags: ${BASE_FLAGS[*]}"
+echo "head flags: ${HEAD_FLAGS[*]}"
 echo "out:  $OUT"
 
 FAIL=0
@@ -64,11 +73,13 @@ fail() {
   FAIL=1
 }
 
-# build <name> <csqv_dir> <source> [extra flags...]
+# build <name> <base|head> <csqv_dir> <source> [extra flags...]
 build() {
-  local name=$1 inc=$2 src=$3
-  shift 3
-  "$CXX" "${FLAGS[@]}" -I"$inc" "$@" "$src" -o "$OUT/bin/$name" -pthread
+  local name=$1 side=$2 inc=$3 src=$4
+  shift 4
+  local flags=("${HEAD_FLAGS[@]}")
+  [[ $side == base ]] && flags=("${BASE_FLAGS[@]}")
+  "$CXX" "${flags[@]}" -I"$inc" "$@" "$src" -o "$OUT/bin/$name" -pthread
 }
 
 echo "== build"
@@ -76,18 +87,18 @@ mkdir -p "$OUT/bin"
 pids=()
 for side in base head fb; do
   case $side in
-    base) inc="$BASE_TREE/cpp/csqv"; extra=() ;;
-    head) inc="$CPP/csqv"; extra=() ;;
-    fb) inc="$CPP/csqv"; extra=(-DCSQV_LP_FORCE_FALLBACK_AT=3) ;;
+    base) inc="$BASE_TREE/cpp/csqv"; flags=base; extra=() ;;
+    head) inc="$CPP/csqv"; flags=head; extra=() ;;
+    fb) inc="$CPP/csqv"; flags=head; extra=(-DCSQV_LP_FORCE_FALLBACK_AT=3) ;;
   esac
-  build "worker_$side" "$inc" "$inc/worker.cpp" ${extra[@]+"${extra[@]}"} &
+  build "worker_$side" "$flags" "$inc" "$inc/worker.cpp" ${extra[@]+"${extra[@]}"} &
   pids+=($!)
   for tool in perf_driver lp_bench trajectory_hash; do
-    build "${tool}_$side" "$inc" "$HERE/$tool.cpp" ${extra[@]+"${extra[@]}"} &
+    build "${tool}_$side" "$flags" "$inc" "$HERE/$tool.cpp" ${extra[@]+"${extra[@]}"} &
     pids+=($!)
   done
 done
-build pricing_check "$CPP/csqv" "$HERE/pricing_check.cpp" -DCSQV_LP_VERIFY_PRICING &
+build pricing_check head "$CPP/csqv" "$HERE/pricing_check.cpp" -DCSQV_LP_VERIFY_PRICING &
 pids+=($!)
 for pid in "${pids[@]}"; do
   wait "$pid" || { echo "FAIL: a build failed"; exit 1; }

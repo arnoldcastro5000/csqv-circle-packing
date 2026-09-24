@@ -21,6 +21,18 @@ endif()
 # change). Do NOT enable -ffast-math: the verifier relies on strict IEEE NaN/inf checks.
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -funroll-loops")
 
+# CSQV_ARCH is the -march target (the same as in cpp/Makefile). The default, native, tunes the build
+# for this host's CPU. To copy a binary to another host, configure with a named target
+# (-DCSQV_ARCH=x86-64-v3) or with no -march (-DCSQV_ARCH=).
+# -ffp-contract=off is mandatory with any -march: a target with FMA lets the compiler fuse
+# a * b + c, which changes the sealed checksums and the startup radii hash
+# (csqv_fp_contract_test fails in such a build).
+set(CSQV_ARCH "native" CACHE STRING "-march target; empty for none")
+if(CSQV_ARCH)
+  add_compile_options(-march=${CSQV_ARCH})
+endif()
+add_compile_options(-ffp-contract=off)
+
 find_package(Threads REQUIRED)
 
 add_executable(csqv_worker csqv/worker.cpp)
@@ -79,6 +91,10 @@ add_test(NAME csqv_general_lp_test COMMAND csqv_general_lp_test)
 add_executable(csqv_jam_slp_test csqv/jam_slp_test.cpp)
 target_include_directories(csqv_jam_slp_test PRIVATE csqv)
 add_test(NAME csqv_jam_slp_test COMMAND csqv_jam_slp_test)
+
+# The build does not fuse a * b + c into an FMA (-ffp-contract=off with any -march).
+add_executable(csqv_fp_contract_test csqv/fp_contract_test.cpp)
+add_test(NAME csqv_fp_contract_test COMMAND csqv_fp_contract_test)
 
 # lp.hpp::detail::solve_reduced_lp: incremental reduced-cost pricing is bit-identical to the
 # full recompute (radii and duals), and the half-integral guard never trips on real LPs.

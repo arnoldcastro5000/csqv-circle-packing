@@ -22,6 +22,8 @@ cpp/bench/gate.sh <base-ref> [out_dir]
   values, for example `GATE_NS="30 90" GATE_SEEDS=2 GATE_BUDGET=3 GATE_SPEED=0`. The script
   header lists every variable.
 - The exit status is 0 only if every gate holds. The last line is `GATE: PASS` or `GATE: FAIL`.
+- Both sides build with the `cpp/Makefile` default flags (`-march=native -ffp-contract=off`). To
+  gate a flag change, give each side its flags with `GATE_BASE_FLAGS` and `GATE_HEAD_FLAGS`.
 
 | Gate | Tool | Pass condition |
 | --- | --- | --- |

@@ -88,7 +88,8 @@ inline std::atomic<long>& lp_pricing_mismatches() {
 // The test rounds 2v to an integer: adding and then subtracting 1.5 * 2^52 does this in
 // exact IEEE-754 arithmetic. If the rounding changes nothing, 2v is an integer.
 // The test has no branch, so the update loop that calls it vectorizes. (std::floor is a
-// library call at the default x86-64 target; a guard with it took about 3x more time.)
+// library call at the x86-64 baseline target, CSQV_ARCH=; a guard with it took about 3x
+// more time. Branch-free, the test also stays fast in a build for that target.)
 inline bool is_half_integral(double v) {
   const double h = 2.0 * v;
   const double kRound = 6755399441055744.0;              // 1.5 * 2^52
