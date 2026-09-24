@@ -63,6 +63,22 @@
 // vectorize a double max without fast-math, because that max must keep the order of a NaN.
 // The Bland phase, the full recompute and the CSQV_LP_VERIFY_PRICING build use the scan.
 //
+// Pivot row. A basis change divides the nonzeros of the leaving row and keeps their columns in
+// nz, in increasing order. A dense pass over the row reads all N columns, but the row has only
+// about 7-8 nonzeros. So each tableau row keeps a block mask: one bit per block of
+// kRowBlock columns. Each nonzero of the row is in a marked block. A marked block can hold only
+// zeros. The mask of the leaving row gives nz from its marked blocks only:
+// - Each row starts with 3 nonzeros (its two radii and its slack), and its mask marks their
+//   blocks.
+// - The division changes only the nonzeros of the leaving row. The elimination changes a
+//   row only at the columns of nz, and each of them is in a marked block of the leaving
+//   row. So the elimination adds the mask of the leaving row to the mask of each changed
+//   row. A bound flip does not change the tableau.
+// - The pass reads the marked blocks in increasing order and each block in increasing
+//   order, and it keeps a column if its entry is != 0 (as the dense pass does). So nz is the
+//   same list as from the dense pass. After the pass, the mask of the leaving row marks
+//   only the blocks that hold a nonzero.
+//
 // Tableau buffer. The dense tableau is large (up to about 2.5 MB at N=121), and the worker
 // solves more than a thousand LPs per second. A new heap block per solve costs a page fault
 // per page on a heap that returns large freed blocks to the OS: the Windows heap does, glibc
@@ -191,6 +207,55 @@ inline int pick_entering(const int64_t* key, int n) {
   return -1;  // not reached: some key equals top
 }
 
+// The block masks of the tableau rows (see "Pivot row" above). Bit b of word w marks the
+// columns (64 * w + b) * kRowBlock to that + kRowBlock - 1.
+inline constexpr int kRowBlock = 8;
+
+// The number of mask words per row for n columns.
+inline int row_mask_words(int n) { return (n + 64 * kRowBlock - 1) / (64 * kRowBlock); }
+
+// Marks the block of column j in a row mask.
+inline void mark_column(uint64_t* mask, int j) {
+  mask[j / (64 * kRowBlock)] |= uint64_t{1} << (j / kRowBlock % 64);
+}
+
+// The index of the lowest set bit of v (v != 0).
+inline int lowest_bit(uint64_t v) {
+#if defined(__GNUC__) || defined(__clang__)
+  return __builtin_ctzll(v);
+#else
+  int b = 0;
+  for (; (v & 1) == 0; v >>= 1) ++b;
+  return b;
+#endif
+}
+
+// The nonzero columns of row (n columns), in increasing order, into nz. The pass reads only
+// the blocks that mask marks, so each nonzero must be in a marked block. After the pass, mask
+// marks only the blocks that hold a nonzero. buf is scratch space for n columns: each column of
+// a block is written, and the count moves on only at a nonzero, so the loop has no branch.
+inline void row_nonzeros(const double* row, int n, uint64_t* mask, int* buf,
+                         std::vector<int>& nz) {
+  int c = 0;
+  for (int w = 0; w < row_mask_words(n); ++w) {
+    uint64_t bits = mask[w], exact = 0;
+    while (bits != 0) {
+      const int b = lowest_bit(bits);
+      bits &= bits - 1;
+      const int j0 = (64 * w + b) * kRowBlock;
+      const int j1 = j0 + kRowBlock < n ? j0 + kRowBlock : n;
+      const int before = c;
+      for (int j = j0; j < j1; ++j) {
+        buf[c] = j;
+        c += row[j] != 0.0;
+      }
+      exact |= static_cast<uint64_t>(c != before) << b;
+    }
+    mask[w] = exact;
+  }
+  nz.assign(buf, buf + c);
+}
+
 // The tableau buffer of the calling thread (see "Tableau buffer" above).
 inline std::vector<double>& tableau_buffer() {
   thread_local std::vector<double> buffer;
@@ -262,6 +327,16 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     for (int j = 0; j < N; ++j) key[j] = pricing_key(status[j], d[j], eps);
   std::vector<int> nz;  // the nonzero columns of the current pivot row
   nz.reserve(N);
+  std::vector<int> nz_buf(N);  // scratch space for row_nonzeros
+  // The block mask of each tableau row (see "Pivot row" above): W words per row.
+  const int W = row_mask_words(N);
+  std::vector<uint64_t> row_mask(static_cast<size_t>(m) * W, 0);
+  for (int p = 0; p < m; ++p) {
+    uint64_t* const mask = &row_mask[static_cast<size_t>(p) * W];
+    mark_column(mask, pairs[p][0]);
+    mark_column(mask, pairs[p][1]);
+    mark_column(mask, k + p);
+  }
   struct ColEntry {
     int row;
     double val;
@@ -395,17 +470,14 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
 
     // Pivot: q enters the basis in leave_row; the old basic var leaves. The pivot row is
     // sparse (about 3% nonzero at N=90), so divide only its nonzeros and keep their columns
-    // in nz. The d update and the elimination below skip the zero columns.
+    // in nz. The row mask gives nz without a pass over all N columns (see "Pivot row"
+    // above). The d update and the elimination below skip the zero columns.
     const int leaving = basis[leave_row];
     const double piv = Tat(leave_row, q);
     double* const lrow = &Tat(leave_row, 0);
-    nz.clear();
-    for (int j = 0; j < N; ++j) {
-      if (lrow[j] != 0.0) {
-        lrow[j] /= piv;
-        nz.push_back(j);
-      }
-    }
+    uint64_t* const lmask = &row_mask[static_cast<size_t>(leave_row) * W];
+    row_nonzeros(lrow, N, lmask, nz_buf.data(), nz);
+    for (const int j : nz) lrow[j] /= piv;
     // A bound flip (above) does not change d. A basis change updates d with the divided
     // pivot row. If the guard fails, the rest of this solve uses the full recompute.
     ++basis_changes;
@@ -421,6 +493,8 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
       const double f = e.val;
       double* const prow = &Tat(e.row, 0);
       for (const int j : nz) prow[j] -= f * lrow[j];
+      uint64_t* const emask = &row_mask[static_cast<size_t>(e.row) * W];
+      for (int w = 0; w < W; ++w) emask[w] |= lmask[w];
     }
     basisRow[leaving] = -1;
     status[leaving] = (leave_to == 1) ? 1 : 0;

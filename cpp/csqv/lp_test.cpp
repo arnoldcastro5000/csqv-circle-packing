@@ -29,6 +29,11 @@
 //      a tie. On random half-integral reduced costs with many ties, this pick is the column
 //      of the full scan: the largest |d_j| > eps of an eligible column, the smallest j on a
 //      tie.
+//   9) PIVOT-ROW NONZEROS: row_nonzeros reads only the blocks that the row mask marks and
+//      gives the columns of the dense pass (entry != 0, so -0 is a zero), in increasing
+//      order. A marked block with only zeros gives no column. After the pass, the mask
+//      marks exactly the blocks that hold a nonzero. The solver keeps each mask a cover of
+//      its row's nonzeros; invariants 1, 5 and 7 check that through the radii and duals.
 // Build: see cpp/CMakeLists.txt (target csqv_lp_test) or cpp/Makefile.
 #include <algorithm>
 #include <array>
@@ -406,6 +411,79 @@ int main() {
     }
     if (agree != cases) std::fprintf(stderr, "  pick differs in %d of %d cases\n", cases - agree, cases);
     CHECK(agree == cases, "the key pick is the column of the full scan");
+  }
+
+  // 9: the pivot-row nonzeros from the row mask. Hand-made rows first, then random rows.
+  {
+    using csqv::detail::kRowBlock;
+    using csqv::detail::mark_column;
+    using csqv::detail::row_mask_words;
+    using csqv::detail::row_nonzeros;
+    CHECK(row_mask_words(0) == 0 && row_mask_words(1) == 1 &&
+              row_mask_words(64 * kRowBlock) == 1 && row_mask_words(64 * kRowBlock + 1) == 2,
+          "one mask word per 64 blocks");
+    // The dense pass: the columns with an entry != 0, and the blocks that hold them.
+    auto dense = [](const std::vector<double>& row, std::vector<int>& cols,
+                    std::vector<uint64_t>& mask) {
+      cols.clear();
+      mask.assign(row_mask_words(static_cast<int>(row.size())), 0);
+      for (size_t j = 0; j < row.size(); ++j) {
+        if (row[j] != 0.0) {
+          cols.push_back(static_cast<int>(j));
+          mark_column(mask.data(), static_cast<int>(j));
+        }
+      }
+    };
+    {
+      // 20 columns: blocks 0, 1 and a partial block 2. Block 0 holds only -0 and +0, block 1
+      // holds a nonzero, block 2 holds two. All three blocks are marked.
+      std::vector<double> row(20, 0.0);
+      row[3] = -0.0;
+      row[9] = -1.0;
+      row[16] = 0.5;
+      row[19] = 2.0;
+      std::vector<uint64_t> mask = {0b111};
+      std::vector<int> buf(row.size()), nz;
+      row_nonzeros(row.data(), 20, mask.data(), buf.data(), nz);
+      CHECK((nz == std::vector<int>{9, 16, 19}), "the nonzeros in increasing order, -0 is zero");
+      CHECK(mask[0] == 0b110, "the mask drops a block of zeros");
+      // An unmarked block is not read: a nonzero there does not appear.
+      mask = {0b100};
+      row_nonzeros(row.data(), 20, mask.data(), buf.data(), nz);
+      CHECK((nz == std::vector<int>{16, 19}), "only the marked blocks are read");
+      mask = {0};
+      row_nonzeros(row.data(), 20, mask.data(), buf.data(), nz);
+      CHECK(nz.empty() && mask[0] == 0, "no marked block gives no column");
+      row_nonzeros(row.data(), 0, mask.data(), buf.data(), nz);
+      CHECK(nz.empty(), "no column gives no column");
+    }
+
+    // Random rows up to 3 mask words: entries k/2 at a few columns (some of them -0 or +0),
+    // and a mask that covers the nonzero blocks plus random extra blocks. The raw mt19937_64
+    // stream with a fixed map gives the same cases everywhere.
+    std::mt19937_64 rng(20260925);
+    int agree = 0, cases = 0;
+    for (int c = 0; c < 20000; ++c) {
+      const int n = static_cast<int>(rng() % (3 * 64 * kRowBlock));
+      std::vector<double> row(n, 0.0);
+      const int fill = n == 0 ? 0 : static_cast<int>(rng() % 12);
+      for (int f = 0; f < fill; ++f) {
+        const int j = static_cast<int>(rng() % n);
+        const int v = static_cast<int>(rng() % 9) - 4;  // -4..4; 0 gives +0 or -0
+        row[j] = v == 0 ? (rng() % 2 ? -0.0 : 0.0) : v * 0.5;
+      }
+      std::vector<int> want;
+      std::vector<uint64_t> exact;
+      dense(row, want, exact);
+      std::vector<uint64_t> mask = exact;
+      for (uint64_t& w : mask) w |= rng() & rng();  // extra blocks, about 1 in 4
+      std::vector<int> buf(n), nz;
+      row_nonzeros(row.data(), n, mask.data(), buf.data(), nz);
+      agree += nz == want && mask == exact;
+      ++cases;
+    }
+    if (agree != cases) std::fprintf(stderr, "  nonzeros differ in %d of %d rows\n", cases - agree, cases);
+    CHECK(agree == cases, "the nonzeros from the mask are the nonzeros of the dense pass");
   }
 
   if (g_failures == 0) std::printf("lp_test: all checks passed\n");
