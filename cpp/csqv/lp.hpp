@@ -56,6 +56,7 @@
 #include <vector>
 
 #include "geometry.hpp"
+#include "stage_timer.hpp"
 
 namespace csqv {
 
@@ -381,6 +382,7 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
 // Exact optimal radii for fixed centers. Matches problem.py::radii_lp.
 inline std::vector<double> radii_lp(const std::vector<double>& x, const std::vector<double>& y,
                                     int n) {
+  CSQV_STAGE_LP_SCOPE();  // the stage worker's LP clock (stage_timer.hpp); off in the worker
   std::vector<double> u(n);
   for (int i = 0; i < n; ++i) u[i] = std::max(wall_slack(x[i], y[i]), 0.0);
   if (n < 2) return u;

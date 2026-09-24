@@ -108,3 +108,11 @@ add_executable(csqv_lp_tableau_test csqv/lp_tableau_test.cpp)
 target_include_directories(csqv_lp_tableau_test PRIVATE csqv)
 target_link_libraries(csqv_lp_tableau_test PRIVATE Threads::Threads)
 add_test(NAME csqv_lp_tableau_test COMMAND csqv_lp_tableau_test)
+
+# stage_timer.hpp: the stage timers of the worker re-profile give each interval to the right
+# stage (radii_lp time and calls included) and merge the per-thread totals with no lost marks.
+add_executable(csqv_stage_timer_test csqv/stage_timer_test.cpp)
+target_include_directories(csqv_stage_timer_test PRIVATE csqv)
+target_compile_definitions(csqv_stage_timer_test PRIVATE CSQV_STAGE_TIMERS)
+target_link_libraries(csqv_stage_timer_test PRIVATE Threads::Threads)
+add_test(NAME csqv_stage_timer_test COMMAND csqv_stage_timer_test)

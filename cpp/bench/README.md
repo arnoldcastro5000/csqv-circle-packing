@@ -48,6 +48,25 @@ cpp/build/bench/trajectory_hash 121 20 5  # G2 hash: <n> <seeds> <polish steps>
 cpp/build/bench/pricing_check 90 4        # in-loop pricing check: <n> <seeds>
 ```
 
+## Profile the stages of a restart
+
+The stage worker is the worker with the stage timers of `csqv/stage_timer.hpp`
+(`-DCSQV_STAGE_TIMERS`). It takes the worker's arguments, follows the same search path for a
+seed, and prints a stage table at exit. Each mark in the worker gives the time since the
+previous mark of its thread to one stage. `radii_lp` adds its own time to a per-thread LP clock,
+so the table also shows the `radii_lp` part of each stage. Without the macro, the marks expand
+to nothing, and the production worker is the same binary as before.
+
+```sh
+make -C cpp stages
+cpp/build/bench/csqv_worker_stages 121 60 0 1 /tmp/st121
+```
+
+The table has one row per stage. `loop%` is the part of the restart loop, `per restart` is the
+time per restart, `radii_lp%` is the part of the stage in `radii_lp`, and `lp/rst` is the
+`radii_lp` calls per restart. Startup, final polish and seal run once, so they show only
+seconds. With several threads, the seconds are the sum over the threads.
+
 ## Rules
 
 - Compile the tools only through `make bench` or `gate.sh`. Both give the headers with

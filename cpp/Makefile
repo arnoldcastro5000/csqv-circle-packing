@@ -30,7 +30,7 @@ endif
 $(FLAGS_STAMP): | $(BUILD)
 	$(if $(findstring n,$(firstword -$(MAKEFLAGS))),,$(file >$@,$(FLAGS_NOW)))
 
-.PHONY: all clean test bench
+.PHONY: all clean test bench stages
 all: $(BUILD)/csqv_worker $(BUILD)/csqv_check $(BUILD)/csqv_squeeze_check
 
 $(BUILD):
@@ -51,37 +51,41 @@ $(BUILD)/csqv_save_test: csqv/save_test.cpp csqv/io.hpp | $(BUILD)
 $(BUILD)/csqv_report_test: csqv/report_test.cpp csqv/report.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/report_test.cpp -o $@
 
-$(BUILD)/csqv_center_polish_test: csqv/center_polish_test.cpp csqv/polish.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
+$(BUILD)/csqv_center_polish_test: csqv/center_polish_test.cpp csqv/polish.hpp csqv/lp.hpp csqv/stage_timer.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/center_polish_test.cpp -o $@
 
-$(BUILD)/csqv_penalty_prefilter_test: csqv/penalty_prefilter_test.cpp csqv/polish.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
+$(BUILD)/csqv_penalty_prefilter_test: csqv/penalty_prefilter_test.cpp csqv/polish.hpp csqv/lp.hpp csqv/stage_timer.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/penalty_prefilter_test.cpp -o $@
 
-$(BUILD)/csqv_fingerprint_test: csqv/fingerprint_test.cpp csqv/fingerprint.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
+$(BUILD)/csqv_fingerprint_test: csqv/fingerprint_test.cpp csqv/fingerprint.hpp csqv/lp.hpp csqv/stage_timer.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/fingerprint_test.cpp -o $@
 
-$(BUILD)/csqv_spread_test: csqv/spread_test.cpp csqv/spread.hpp csqv/search.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
+$(BUILD)/csqv_spread_test: csqv/spread_test.cpp csqv/spread.hpp csqv/search.hpp csqv/lp.hpp csqv/stage_timer.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/spread_test.cpp -o $@
 
 $(BUILD)/csqv_general_lp_test: csqv/general_lp_test.cpp csqv/general_lp.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/general_lp_test.cpp -o $@
 
-$(BUILD)/csqv_lp_test: csqv/lp_test.cpp csqv/lp.hpp csqv/search.hpp csqv/benchmark.hpp csqv/geometry.hpp | $(BUILD)
+$(BUILD)/csqv_lp_test: csqv/lp_test.cpp csqv/lp.hpp csqv/stage_timer.hpp csqv/search.hpp csqv/benchmark.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/lp_test.cpp -o $@
 
-$(BUILD)/csqv_lp_tableau_test: csqv/lp_tableau_test.cpp csqv/lp.hpp csqv/search.hpp csqv/geometry.hpp | $(BUILD)
+$(BUILD)/csqv_lp_tableau_test: csqv/lp_tableau_test.cpp csqv/lp.hpp csqv/stage_timer.hpp csqv/search.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/lp_tableau_test.cpp -o $@ $(LDFLAGS)
 
 $(BUILD)/csqv_fp_contract_test: csqv/fp_contract_test.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/fp_contract_test.cpp -o $@
 
-$(BUILD)/csqv_jam_slp_test: csqv/jam_slp_test.cpp csqv/jam_slp.hpp csqv/general_lp.hpp csqv/lp.hpp csqv/geometry.hpp | $(BUILD)
+$(BUILD)/csqv_stage_timer_test: csqv/stage_timer_test.cpp csqv/stage_timer.hpp csqv/lp.hpp csqv/search.hpp csqv/geometry.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) -DCSQV_STAGE_TIMERS csqv/stage_timer_test.cpp -o $@ $(LDFLAGS)
+
+$(BUILD)/csqv_jam_slp_test: csqv/jam_slp_test.cpp csqv/jam_slp.hpp csqv/general_lp.hpp csqv/lp.hpp csqv/stage_timer.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/jam_slp_test.cpp -o $@
 
 # Bench tools for bit-identical speed work (see bench/README.md). The full gate against a
 # git ref is bench/gate.sh; these targets build the tools from this tree only.
 BENCH_TOOLS := perf_driver lp_bench trajectory_hash
-bench: $(addprefix $(BUILD)/bench/,$(BENCH_TOOLS)) $(BUILD)/bench/pricing_check
+bench: $(addprefix $(BUILD)/bench/,$(BENCH_TOOLS)) $(BUILD)/bench/pricing_check \
+    $(BUILD)/bench/csqv_worker_stages
 
 $(BUILD)/bench:
 	mkdir -p $(BUILD)/bench
@@ -92,15 +96,23 @@ $(addprefix $(BUILD)/bench/,$(BENCH_TOOLS)): $(BUILD)/bench/%: bench/%.cpp csqv/
 $(BUILD)/bench/pricing_check: bench/pricing_check.cpp csqv/*.hpp | $(BUILD)/bench
 	$(CXX) $(CXXFLAGS) -DCSQV_LP_VERIFY_PRICING $< -o $@
 
+stages: $(BUILD)/bench/csqv_worker_stages
+
+# The stage worker: the worker with the stage timers of csqv/stage_timer.hpp. It follows the
+# same search path for a seed and prints a stage table at exit. It is for the re-profile only.
+$(BUILD)/bench/csqv_worker_stages: csqv/worker.cpp csqv/*.hpp | $(BUILD)/bench
+	$(CXX) $(CXXFLAGS) -DCSQV_STAGE_TIMERS csqv/worker.cpp -o $@ $(LDFLAGS)
+
 # Build and run the unit tests (save: atomic+monotonic, no leak; report: --record flag;
 # center_polish: monotone exact-LP center squeeze; fingerprint: basin hash; spread: seed spreading;
 # lp: incremental reduced-cost pricing, and a forced mid-solve fallback, are bit-identical to
 # the full recompute; lp_tableau: each thread reuses one tableau buffer, with no stale state;
-# fp_contract: CXXFLAGS do not fuse a * b + c into an FMA).
+# fp_contract: CXXFLAGS do not fuse a * b + c into an FMA; stage_timer: the re-profile stage
+# timers give each interval to the right stage).
 test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_polish_test \
       $(BUILD)/csqv_fingerprint_test $(BUILD)/csqv_spread_test $(BUILD)/csqv_general_lp_test \
       $(BUILD)/csqv_jam_slp_test $(BUILD)/csqv_penalty_prefilter_test $(BUILD)/csqv_lp_test \
-      $(BUILD)/csqv_lp_tableau_test $(BUILD)/csqv_fp_contract_test
+      $(BUILD)/csqv_lp_tableau_test $(BUILD)/csqv_fp_contract_test $(BUILD)/csqv_stage_timer_test
 	$(BUILD)/csqv_fp_contract_test
 	$(BUILD)/csqv_save_test
 	$(BUILD)/csqv_report_test
@@ -112,6 +124,7 @@ test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_pol
 	$(BUILD)/csqv_jam_slp_test
 	$(BUILD)/csqv_lp_test
 	$(BUILD)/csqv_lp_tableau_test
+	$(BUILD)/csqv_stage_timer_test
 
 clean:
 	rm -rf $(BUILD)
@@ -119,6 +132,6 @@ clean:
 NATIVE_BINS := $(addprefix $(BUILD)/,csqv_worker csqv_check csqv_squeeze_check csqv_save_test \
   csqv_report_test csqv_center_polish_test csqv_penalty_prefilter_test csqv_fingerprint_test \
   csqv_spread_test csqv_general_lp_test csqv_lp_test csqv_lp_tableau_test csqv_fp_contract_test \
-  csqv_jam_slp_test) \
-  $(addprefix $(BUILD)/bench/,$(BENCH_TOOLS) pricing_check)
+  csqv_jam_slp_test csqv_stage_timer_test) \
+  $(addprefix $(BUILD)/bench/,$(BENCH_TOOLS) pricing_check csqv_worker_stages)
 $(NATIVE_BINS): $(FLAGS_STAMP)

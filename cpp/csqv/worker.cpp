@@ -46,6 +46,7 @@
 #include "report.hpp"
 #include "search.hpp"
 #include "spread.hpp"
+#include "stage_timer.hpp"
 
 namespace {
 
@@ -183,6 +184,7 @@ void announce(Shared& sh, int seed, const std::string& pos, double s) {
 }
 
 void worker_loop(Shared& sh, int seed) {
+  CSQV_STAGE_START();  // stage timers: only in the stage worker (stage_timer.hpp)
   csqv::Rng rng(static_cast<uint64_t>(seed) * 0x9e3779b97f4a7c15ULL + 1);
   const int n = sh.n;
   const char* kinds[] = {"grid", "jitter", "hex", "random"};
@@ -243,6 +245,7 @@ void worker_loop(Shared& sh, int seed) {
         announce(sh, seed, "r" + std::to_string(restarts), s);
     }
   };
+  CSQV_STAGE_MARK(kStartup);
   while (elapsed(sh.t0) < sh.budget) {
     // A warm restart perturbs the thread's own best: this is DEPTH (the MBH walk), never gated by
     // the basin dedup. A cold restart builds a fresh construction: this is the SEED, which the
@@ -262,9 +265,13 @@ void worker_loop(Shared& sh, int seed) {
     } else {
       csqv::construct(n, kinds[restarts % 4], rng, x, y);
     }
+    CSQV_STAGE_MARK(kSeed);
     csqv::growpush(x, y, n, rng);
+    CSQV_STAGE_MARK(kGrowpush);
     r = csqv::radii_lp(x, y, n);
+    CSQV_STAGE_MARK(kRadiiLp);
     double s = csqv::scalable_polish(x, y, r, n);
+    CSQV_STAGE_MARK(kPolish);
     // NO mid-run center squeeze. center_polish costs up to max_iter x 4n exact-LP solves, and a
     // warm mid-N push produces frequent SMALL (refinement) new bests, so squeezing each one
     // stalls the restart rate (the user-observed slowdown at N=123/124). The squeeze is monotone,
@@ -275,6 +282,7 @@ void worker_loop(Shared& sh, int seed) {
 
     // Bank any improvement from THIS descent before the dedup can overwrite it (F4).
     consider(s, x, y, r);
+    CSQV_STAGE_MARK(kBank);
 
     // Basin bookkeeping, ONLY when instrumented (spread or count). The plain baseline (no flag)
     // stays byte-identical, with no fingerprint and no lock on the hot path (F1). Fingerprint every
@@ -286,6 +294,7 @@ void worker_loop(Shared& sh, int seed) {
     if (sh.instrumented()) {
       uint64_t fp = csqv::basin_fingerprint(x, y, r, n);
       bool was_new = sh.record_basin(fp);
+      CSQV_STAGE_MARK(kBasin);
       if (sh.spread_mode && !warm && !was_new) {
         const int kremove = std::max(1, n / 25);
         for (int attempt = 0; attempt < 3 && !was_new; ++attempt) {
@@ -297,6 +306,7 @@ void worker_loop(Shared& sh, int seed) {
           fp = csqv::basin_fingerprint(x, y, r, n);
           was_new = sh.record_basin(fp);
         }
+        CSQV_STAGE_MARK(kEscape);
       }
     }
   }
@@ -316,6 +326,8 @@ void worker_loop(Shared& sh, int seed) {
       if (publish_global(sh, seed, bx, by, rr, sc)) announce(sh, seed, "final", sc);
     }
   }
+  CSQV_STAGE_MARK(kFinalPolish);
+  CSQV_STAGE_FLUSH();
 
   std::lock_guard<std::mutex> lk(g_io);
   std::printf("  [s%d] done best=%.9f restarts=%ld\n", seed, best, restarts);
@@ -370,6 +382,7 @@ int main(int argc, char** argv) {
   sh.base_seed = base_seed;
   sh.threads = threads;
   sh.t0 = Clock::now();
+  CSQV_STAGE_START();
 
   std::error_code ec;
   std::filesystem::create_directories(sh.out_dir, ec);
@@ -405,10 +418,12 @@ int main(int argc, char** argv) {
                   all_feasible ? "YES" : "NO (WARNING: numeric divergence on this build)");
     std::fflush(stdout);
   }
+  CSQV_STAGE_MARK(kStartup);  // the startup benchmark
 
   std::vector<std::thread> pool;
   for (int t = 0; t < threads; ++t) pool.emplace_back(worker_loop, std::ref(sh), base_seed + t);
   for (auto& th : pool) th.join();
+  CSQV_STAGE_START();  // the join wait is not a stage
 
   // Pre-squeeze best: the value the search reached before the terminal seal.
   const double pre = sh.global_best.load();
@@ -465,6 +480,8 @@ int main(int argc, char** argv) {
       }
     }
   }
+  CSQV_STAGE_MARK(kSeal);
+  CSQV_STAGE_FLUSH();
 
   std::lock_guard<std::mutex> lk(g_io);
   if (sh.no_squeeze)
@@ -498,5 +515,6 @@ int main(int argc, char** argv) {
     std::printf("N=%d: WARNING radii-LP pricing fell back to the full recompute in %ld solves "
                 "(half-integral guard tripped)\n",
                 sh.n, fallbacks);
+  CSQV_STAGE_REPORT(sh.budget);
   return 0;
 }
