@@ -38,6 +38,16 @@
 // same. Each division has a nonzero divisor (the pivot, the ratio-test coefficient), so a
 // zero sign never becomes the sign of an infinity. Thus the radii, the duals and d are the
 // same bits as with the dense pass, and none of them is -0.
+//
+// Tableau buffer. The dense tableau is large (up to about 2.5 MB at N=121), and the worker
+// solves more than a thousand LPs per second. A new heap block per solve costs a page fault
+// per page on a heap that returns large freed blocks to the OS: the Windows heap does, glibc
+// does not by default. So each thread keeps one tableau buffer, and each solve resets it to
+// zeros with assign. The values are the same as in a new block. The buffer keeps the largest
+// size that its thread used (about 44 MB at N=484). The buffer is thread_local. MinGW
+// emulates thread-local storage with a function call per access, so a solve reads the buffer
+// once. A solve must not start another solve (none does), because the two would share the
+// buffer.
 #pragma once
 #include <array>
 #include <atomic>
@@ -120,6 +130,12 @@ inline bool update_reduced_costs(std::vector<double>& d, const double* row,
   return !inexact && is_half_integral_pivot(piv);
 }
 
+// The tableau buffer of the calling thread (see "Tableau buffer" above).
+inline std::vector<double>& tableau_buffer() {
+  thread_local std::vector<double> buffer;
+  return buffer;
+}
+
 // Solve  max sum(z_i)  s.t.  z_a + z_b <= rhs  for each pair (a,b),  0 <= z_i <= u_i.
 // Bounded-variable primal simplex on the standard form  A z + s = rhs,  s >= 0.
 // Variables 0..k-1 are the structural radii; k..k+m-1 are the row slacks.
@@ -153,7 +169,8 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
   for (int p = 0; p < m; ++p) hi[k + p] = INF;  // slacks
 
   // Dense tableau T (m x N) = B^{-1} A, and basic values xB. Start B = slack identity.
-  std::vector<double> T(static_cast<size_t>(m) * N, 0.0);
+  std::vector<double>& T = tableau_buffer();
+  T.assign(static_cast<size_t>(m) * N, 0.0);
   auto Tat = [&](int row, int col) -> double& { return T[static_cast<size_t>(row) * N + col]; };
   for (int p = 0; p < m; ++p) {
     Tat(p, pairs[p][0]) += 1.0;

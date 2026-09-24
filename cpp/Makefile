@@ -67,6 +67,9 @@ $(BUILD)/csqv_general_lp_test: csqv/general_lp_test.cpp csqv/general_lp.hpp | $(
 $(BUILD)/csqv_lp_test: csqv/lp_test.cpp csqv/lp.hpp csqv/search.hpp csqv/benchmark.hpp csqv/geometry.hpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/lp_test.cpp -o $@
 
+$(BUILD)/csqv_lp_tableau_test: csqv/lp_tableau_test.cpp csqv/lp.hpp csqv/search.hpp csqv/geometry.hpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) csqv/lp_tableau_test.cpp -o $@ $(LDFLAGS)
+
 $(BUILD)/csqv_fp_contract_test: csqv/fp_contract_test.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) csqv/fp_contract_test.cpp -o $@
 
@@ -90,11 +93,12 @@ $(BUILD)/bench/pricing_check: bench/pricing_check.cpp csqv/*.hpp | $(BUILD)/benc
 # Build and run the unit tests (save: atomic+monotonic, no leak; report: --record flag;
 # center_polish: monotone exact-LP center squeeze; fingerprint: basin hash; spread: seed spreading;
 # lp: incremental reduced-cost pricing, and a forced mid-solve fallback, are bit-identical to
-# the full recompute; fp_contract: CXXFLAGS do not fuse a * b + c into an FMA).
+# the full recompute; lp_tableau: each thread reuses one tableau buffer, with no stale state;
+# fp_contract: CXXFLAGS do not fuse a * b + c into an FMA).
 test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_polish_test \
       $(BUILD)/csqv_fingerprint_test $(BUILD)/csqv_spread_test $(BUILD)/csqv_general_lp_test \
       $(BUILD)/csqv_jam_slp_test $(BUILD)/csqv_penalty_prefilter_test $(BUILD)/csqv_lp_test \
-      $(BUILD)/csqv_fp_contract_test
+      $(BUILD)/csqv_lp_tableau_test $(BUILD)/csqv_fp_contract_test
 	$(BUILD)/csqv_fp_contract_test
 	$(BUILD)/csqv_save_test
 	$(BUILD)/csqv_report_test
@@ -105,12 +109,14 @@ test: $(BUILD)/csqv_save_test $(BUILD)/csqv_report_test $(BUILD)/csqv_center_pol
 	$(BUILD)/csqv_general_lp_test
 	$(BUILD)/csqv_jam_slp_test
 	$(BUILD)/csqv_lp_test
+	$(BUILD)/csqv_lp_tableau_test
 
 clean:
 	rm -rf $(BUILD)
 
 NATIVE_BINS := $(addprefix $(BUILD)/,csqv_worker csqv_check csqv_squeeze_check csqv_save_test \
   csqv_report_test csqv_center_polish_test csqv_penalty_prefilter_test csqv_fingerprint_test \
-  csqv_spread_test csqv_general_lp_test csqv_lp_test csqv_fp_contract_test csqv_jam_slp_test) \
+  csqv_spread_test csqv_general_lp_test csqv_lp_test csqv_lp_tableau_test csqv_fp_contract_test \
+  csqv_jam_slp_test) \
   $(addprefix $(BUILD)/bench/,$(BENCH_TOOLS) pricing_check)
 $(NATIVE_BINS): $(FLAGS_STAMP)
