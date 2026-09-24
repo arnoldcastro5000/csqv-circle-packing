@@ -101,7 +101,6 @@ add_test(NAME csqv_fp_contract_test COMMAND csqv_fp_contract_test)
 add_executable(csqv_lp_test csqv/lp_test.cpp)
 target_include_directories(csqv_lp_test PRIVATE csqv)
 add_test(NAME csqv_lp_test COMMAND csqv_lp_test)
-add_test(NAME csqv_lp_test COMMAND csqv_lp_test)
 
 # lp.hpp::detail::solve_reduced_lp: each thread reuses one tableau buffer (no large block per
 # repeated solve), and a solve never sees the old entries of an earlier, larger solve.
