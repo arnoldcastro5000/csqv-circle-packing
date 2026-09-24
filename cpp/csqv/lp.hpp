@@ -39,6 +39,17 @@
 // zero sign never becomes the sign of an infinity. Thus the radii, the duals and d are the
 // same bits as with the dense pass, and none of them is -0.
 //
+// Column q. The entering column q of the tableau is sparse too (about 5-8% nonzero at
+// N=90..143). The tableau is row-major, so a pass down column q reads one double per row
+// with a stride of N. Each iteration reads column q once and keeps its nonzero rows, in
+// increasing row order. The ratio test, the xB step and the elimination use only this list:
+// - The ratio test skips a zero coefficient (it is neither > eps nor < -eps), and the list
+//   keeps the row order, so the leaving row and its tie-break are the same.
+// - At a zero row, the dense xB step computes xB[p] - (+-0). This is xB[p], because xB
+//   never holds -0 (see above) and the step is finite.
+// - The division of the pivot row changes only the leaving row, and the elimination skips
+//   that row. So the listed values of the other rows are still column q at the elimination.
+//
 // Tableau buffer. The dense tableau is large (up to about 2.5 MB at N=121), and the worker
 // solves more than a thousand LPs per second. A new heap block per solve costs a page fault
 // per page on a heap that returns large freed blocks to the OS: the Windows heap does, glibc
@@ -198,6 +209,12 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
   std::vector<double> d = cost;
   std::vector<int> nz;  // the nonzero columns of the current pivot row
   nz.reserve(N);
+  struct ColEntry {
+    int row;
+    double val;
+  };
+  std::vector<ColEntry> col;  // the nonzero rows of column q (see "Column q" above)
+  col.reserve(m);
   int basis_changes = 0;  // counts pivots for the force_fallback_at test hook
 #ifdef CSQV_LP_VERIFY_PRICING
   long compares = 0, mismatches = 0;
@@ -263,10 +280,16 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
         leave_row = -1;  // flip, no basis change
       }
     }
-    // 2) basic variables hitting a bound.
+    // 2) basic variables hitting a bound. Only a nonzero row of column q can reach one.
+    col.clear();
     for (int p = 0; p < m; ++p) {
-      const double coef = Tat(p, q) * qdir;  // xB[p] decreases at rate coef as t grows
-      if (coef > eps) {                      // heading toward lower bound
+      const double v = Tat(p, q);
+      if (v != 0.0) col.push_back({p, v});
+    }
+    for (const ColEntry& e : col) {
+      const int p = e.row;
+      const double coef = e.val * qdir;  // xB[p] decreases at rate coef as t grows
+      if (coef > eps) {                  // heading toward lower bound
         const double room = xB[p] - lo[basis[p]];
         const double ratio = room / coef;
         if (ratio < t - 1e-15) {
@@ -292,7 +315,7 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     const double delta = qdir * t;
 
     // Update basic values for the step.
-    for (int p = 0; p < m; ++p) xB[p] -= Tat(p, q) * delta;
+    for (const ColEntry& e : col) xB[e.row] -= e.val * delta;
 
     if (leave_row < 0) {
       // Bound flip: q moves to its opposite bound, stays nonbasic.
@@ -323,11 +346,10 @@ inline std::vector<double> solve_reduced_lp(int k, const std::vector<double>& u,
     }
     const double entering_val = nonbasic_value(q) + delta;
     xB[leave_row] = entering_val;
-    for (int p = 0; p < m; ++p) {
-      if (p == leave_row) continue;
-      const double f = Tat(p, q);
-      if (f == 0.0) continue;
-      double* const prow = &Tat(p, 0);
+    for (const ColEntry& e : col) {
+      if (e.row == leave_row) continue;
+      const double f = e.val;
+      double* const prow = &Tat(e.row, 0);
       for (const int j : nz) prow[j] -= f * lrow[j];
     }
     basisRow[leaving] = -1;

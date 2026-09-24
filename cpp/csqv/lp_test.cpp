@@ -19,6 +19,11 @@
 //   6) NO NEGATIVE ZERO: the radii and the duals never hold -0, also when a bound u_i is -0
 //      (a center at x = -0). The sparse elimination leaves other zero signs in the tableau
 //      than the dense one; this invariant is why those signs cannot reach the output.
+//   7) GOLDEN BITS: the radii and the duals of a fixed set of LPs hash to a recorded value.
+//      Invariants 1 and 5 compare two paths of the same solver, so a change to a step that
+//      both paths share (the ratio test, its tie-break, the elimination) passes them. This
+//      check catches it. A bit-identical speed change must keep the value. A deliberate
+//      change of the LP output records the new value that the failure message prints.
 // Build: see cpp/CMakeLists.txt (target csqv_lp_test) or cpp/Makefile.
 #include <algorithm>
 #include <array>
@@ -133,6 +138,54 @@ static int check_no_negative_zero(const FullLp& lp) {
     CHECK(!has_negative_zero(rc), "no structural reduced cost is -0");
   }
   return 1;
+}
+
+// Grid centers for invariant 7: a near-square grid of n points with exact coordinates
+// (c + 0.5) / cols, plus a jitter of up to +-jitter/2 per coordinate. The jitter comes from
+// bench_centers, the raw mt19937_64 stream with a fixed map. So every conforming compiler
+// and C library gives the same centers. A grid with no jitter has many equal distances, so
+// its LP has many ties in the pricing and in the ratio test.
+static void grid_centers(int n, uint64_t seed, double jitter, std::vector<double>& x,
+                         std::vector<double>& y) {
+  std::vector<double> jx, jy;
+  csqv::bench_centers(n, seed, jx, jy);
+  const int cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(n))));
+  x.resize(n);
+  y.resize(n);
+  for (int i = 0; i < n; ++i) {
+    x[i] = ((i % cols) + 0.5) / cols + jitter * (jx[i] - 0.5);
+    y[i] = ((i / cols) + 0.5) / cols + jitter * (jy[i] - 0.5);
+  }
+}
+
+// The golden LP set of invariant 7. Only portable inputs: the startup benchmark centers and
+// the grid centers. (construct and growpush use std::uniform_real_distribution and
+// std::normal_distribution, which differ between standard libraries.) For each, the radii
+// and the duals of the full LP, then the radii of radii_lp (the lazy active-set loop).
+static uint64_t golden_hash() {
+  std::vector<double> out;
+  auto add = [&](const std::vector<double>& x, const std::vector<double>& y, int n) {
+    const FullLp lp = full_lp(x, y, n);
+    std::vector<double> dual, rc;
+    const std::vector<double> z =
+        csqv::detail::solve_reduced_lp(lp.k, lp.u, lp.pairs, lp.rhs, &dual, &rc);
+    const std::vector<double> r = csqv::radii_lp(x, y, n);
+    for (const std::vector<double>& v : {z, dual, rc, r}) out.insert(out.end(), v.begin(), v.end());
+  };
+  const std::pair<int, uint64_t> cases[] = {{5, 1}, {13, 2}, {30, 3}, {60, 4}, {90, 5}, {121, 6}};
+  for (auto [n, seed] : cases) {
+    std::vector<double> x, y;
+    csqv::bench_centers(n, seed, x, y);
+    add(x, y, n);
+  }
+  for (int n : {20, 45, 70, 90, 121}) {
+    for (double jitter : {0.0, 1e-6, 1e-3, 3e-2}) {
+      std::vector<double> x, y;
+      grid_centers(n, static_cast<uint64_t>(1000 + n), jitter, x, y);
+      add(x, y, n);
+    }
+  }
+  return csqv::hash_doubles(out);
 }
 
 int main() {
@@ -275,6 +328,16 @@ int main() {
       }
     }
     CHECK(checked == 16, "all no-negative-zero cases ran");
+  }
+
+  // 7: the golden bits.
+  {
+    const uint64_t kGolden = 0x0a4c1ce804e3e72cULL;
+    const uint64_t h = golden_hash();
+    if (h != kGolden)
+      std::fprintf(stderr, "  golden hash 0x%016llxULL, expected 0x%016llxULL\n",
+                   static_cast<unsigned long long>(h), static_cast<unsigned long long>(kGolden));
+    CHECK(h == kGolden, "the LP outputs keep the recorded bits");
   }
 
   if (g_failures == 0) std::printf("lp_test: all checks passed\n");
